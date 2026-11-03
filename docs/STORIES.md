@@ -256,7 +256,8 @@ Thimble: d8b988eb
 Notes: Sparkle 2 is wired in (feed: appcast.xml of the latest GitHub release, EdDSA key in the login Keychain, account "am2rlauncherplus"); tools/release.sh builds, notarizes and publishes. Done after the first real release is found by an older build.
 Acceptance:
 - [manual] A notarized DMG opens without warnings; Sparkle finds a test update.
-Status: todo
+Verified 2026-11-03: the published 0.2.1 app (notarized, Gatekeeper accepted) found 0.2.2 with Check for Updates… and installed it. A copy must not be running from ~/Applications while release.sh rebuilds it (the script now quits it), or Sparkle's installer rejects the changed signature.
+Status: done
 
 ## Later
 - Mods: import a mod zip, install it as its own profile (3cab5910)
