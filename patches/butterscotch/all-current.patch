@@ -467,10 +467,21 @@ index ae09f7d..284489e 100644
      int32_t (*gpuGetBlendMode)(Renderer* renderer);
      void (*gpuSetBlendMode)(Renderer* renderer, int32_t mode);
 diff --git a/src/runner.c b/src/runner.c
-index a4feef1..4750103 100644
+index a4feef1..b5c5159 100644
 --- a/src/runner.c
 +++ b/src/runner.c
-@@ -5400,3 +5400,18 @@ void Runner_free(Runner* runner) {
+@@ -4114,7 +4114,9 @@ static void persistRoomState(Runner* runner, int32_t roomIndex) {
+         Instance* inst = runner->instances[i];
+         if (inst->persistent) {
+             arrput(keptInstances, inst);
+-        } else if (inst->active) {
++        } else if (!inst->destroyed) {
++            // Deactivated instances stay in the saved room, still deactivated, like GMS
++            // (AM2R deactivates everything off-screen; freeing them deleted walls on every pause).
+             arrput(state->instances, inst);
+         } else {
+             hmdel(runner->instancesById, inst->instanceId);
+@@ -5400,3 +5402,18 @@ void Runner_free(Runner* runner) {
          free(runner->windowTitle);
      free(runner);
  }
