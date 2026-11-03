@@ -222,6 +222,25 @@ enum SelfTest {
                         model.setEngine(.native, for: installed)
                         check("switching back to Native keeps the Rosetta app for next time", installed.engine == .native && RosettaApp.app(in: installed.folder) != nil)
                         try? FileManager.default.removeItem(at: runnerData)
+
+                        // S-021: Update rebuilds the profile in place and keeps its saves and settings.
+                        let saves = GameRunner.saveFolder(for: installed)
+                        let configBefore = try? Data(contentsOf: GameSettings.configFile(in: saves))
+                        try? Data("save".utf8).write(to: saves.appending(path: "save1"))
+                        let commit = installed.patchCommit, count = profiles().count
+                        installed.patchCommit = String(repeating: "0", count: 40)
+                        installed.version = "1.5.4"
+                        installed.name = "Community Updates 1.5.4"
+                        model.startInstall(updating: installed.uuid)
+                        check("Update shows the install page for this profile", model.install?.updating == installed.uuid)
+                        for _ in 0..<1200 where model.install != nil && model.install?.failure == nil { try? await Task.sleep(for: .milliseconds(100)) }
+                        check("Update finishes without an error", model.install == nil, model.install?.failure ?? "still running")
+                        check("Update keeps the same profile", profiles().count == count && installed.patchCommit == commit)
+                        check("Update renames a default name to the new version", installed.version == "1.5.5" && installed.name == "Community Updates 1.5.5", installed.name)
+                        check("the updated game.ios is 1.5.5", AM2R11.md5(of: installed.folder.appending(path: "game.ios")) == "0de029951c94b04545c9c257053ad712")
+                        check("Update keeps the saves and config.ini",
+                              (try? String(contentsOf: saves.appending(path: "save1"), encoding: .utf8)) == "save"
+                              && (try? Data(contentsOf: GameSettings.configFile(in: saves))) == configBefore)
                         for _ in 0..<6 { GameRunner.pruneLogs(in: GameRunner.logFolder(for: installed), keep: 4) }
                         let kept = (try? FileManager.default.contentsOfDirectory(atPath: GameRunner.logFolder(for: installed).path))?.count ?? 0
                         check("at most five logs are kept", kept <= 5)

@@ -1,3 +1,4 @@
+import AM2RLauncherPlusKit
 import Foundation
 import SwiftData
 
@@ -23,6 +24,8 @@ enum SeedData {
         current.playTime = 2 * 3_600 + 14 * 60
         current.patchCommit = String(repeating: "5", count: 40)
         context.insert(current)
+        // The AM2R 1.1 copy those profiles were installed from.
+        context.insert(GameSource(copy: AM2R11.Copy(url: URL(fileURLWithPath: "/tmp/AM2R_11.zip"), kind: .zip, root: "", hasWindowsGame: true)))
         try? context.save()
         model.selection = current.id
         // The game files a real install brings for Settings > Game: the language list.

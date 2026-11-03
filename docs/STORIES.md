@@ -202,7 +202,7 @@ Thimble: 18de8824
 Acceptance:
 - [unit] On launch (at most daily) the latest SHA and `profile.xml` version are compared with the profile.
 - [snap] A banner shows "1.5.6 is available" with Update.
-Status: todo
+Status: done
 
 ### S-021 Update a profile in one click
 As the player, Update re-patches my profile and keeps my saves and settings.
@@ -212,7 +212,7 @@ Thimble: 251ca765
 Acceptance:
 - [unit] The new profile is built beside the old one and swapped in only when complete; save folder
   and `config.ini` are untouched.
-Status: todo
+Status: done
 
 ### S-022 Manage profiles
 As the player, I see my profiles, rename, duplicate, reveal and delete them.

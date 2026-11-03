@@ -103,3 +103,25 @@ func buildsTheRealCommunityUpdatesProfile() async throws {
     let oggs = try FileManager.default.contentsOfDirectory(atPath: result.folder.path).filter { $0.hasSuffix(".ogg") }
     #expect(oggs.count >= 45 && oggs.allSatisfy { $0 == $0.lowercased() })
 }
+
+/// S-021: an update rebuilds the profile beside the old one; the saves next to it stay as they are.
+@Test(.enabled(if: xdelta3 != nil))
+func updatingAProfileReplacesItsFilesAndKeepsTheSaves() throws {
+    let setup = try Setup()
+    let fm = FileManager.default
+    try fm.createDirectory(at: setup.destination, withIntermediateDirectories: true)
+    try Data("old".utf8).write(to: setup.destination.appending(path: "game.ios"))
+    try Data("gone".utf8).write(to: setup.destination.appending(path: "removed-in-update.txt"))
+    let saves = setup.dir.appending(path: "Saves/one", directoryHint: .isDirectory)
+    try fm.createDirectory(at: saves, withIntermediateDirectories: true)
+    let config = "[Screen]\nScale=\"3\"\n"
+    try Data(config.utf8).write(to: saves.appending(path: "config.ini"))
+    try Data("save".utf8).write(to: saves.appending(path: "save1"))
+
+    let result = try ProfileBuilder.build(source: setup.game, kind: .folder, root: "", patchData: setup.patch, destination: setup.destination)
+    #expect((try? String(contentsOf: result.folder.appending(path: "game.ios"), encoding: .utf8))?.hasPrefix("PATCHED ") == true)
+    #expect(!fm.fileExists(atPath: setup.destination.appending(path: "removed-in-update.txt").path))
+    #expect(!fm.fileExists(atPath: setup.destination.path + ".partial"))
+    #expect((try? String(contentsOf: saves.appending(path: "config.ini"), encoding: .utf8)) == config)
+    #expect((try? String(contentsOf: saves.appending(path: "save1"), encoding: .utf8)) == "save")
+}

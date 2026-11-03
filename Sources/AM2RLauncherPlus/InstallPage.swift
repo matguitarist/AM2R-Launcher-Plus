@@ -7,7 +7,7 @@ struct InstallPage: View {
 
     var body: some View {
         VStack(spacing: Space.xxl) {
-            Text(state.finishedName.map { "\($0) is ready" } ?? "Installing Community Updates")
+            Text(state.finishedName.map { "\($0) is ready" } ?? state.updatingName.map { "Updating \($0)" } ?? "Installing Community Updates")
                 .font(.largeTitle.bold())
                 .accessibilityAddTraits(.isHeader)
             VStack(alignment: .leading, spacing: Space.lg) {
@@ -65,7 +65,7 @@ struct InstallPage: View {
             HStack(spacing: Space.md) {
                 Button("Cancel") { model.cancelInstall() }
                     .keyboardShortcut(.cancelAction)
-                Button("Try Again") { model.install = nil; model.startInstall() }
+                Button("Try Again") { let updating = state.updating; model.install = nil; model.startInstall(updating: updating) }
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)
             }

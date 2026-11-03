@@ -18,6 +18,13 @@ public enum AM2R11 {
         public var root: String
         /// False when AM2R.exe is missing or modified: Rosetta can't be used, Native still can.
         public var hasWindowsGame: Bool
+
+        public init(url: URL, kind: Kind, root: String, hasWindowsGame: Bool) {
+            self.url = url
+            self.kind = kind
+            self.root = root
+            self.hasWindowsGame = hasWindowsGame
+        }
     }
 
     /// Why a file isn't AM2R 1.1. The messages are UI text (docs/STORIES.md S-001).

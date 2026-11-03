@@ -47,6 +47,12 @@ struct AM2RLauncherPlusApp: App {
                 }
                 .keyboardShortcut("u")
                 .disabled(model.checkingForUpdates || model.currentProfile == nil)
+                Button("Update Profile") {
+                    if let profile = model.currentProfile { model.sidebar = .play; model.startInstall(updating: profile.uuid) }
+                }
+                .keyboardShortcut("u", modifiers: [.command, .shift])
+                .disabled(model.isPlaying || model.install != nil || model.source == nil
+                          || model.currentProfile.flatMap { model.availableUpdate(for: $0) } == nil)
                 Divider()
                 Menu("Engine") {
                     ForEach(Engine.allCases) { engine in

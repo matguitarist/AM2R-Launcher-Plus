@@ -187,6 +187,9 @@ struct InstallState: Equatable {
     var failure: String?
     /// Set when the profile is ready; the page shows it briefly, then Play.
     var finishedName: String?
+    /// Updating this profile in place (S-021) instead of installing a new one.
+    var updating: UUID?
+    var updatingName: String?
 }
 
 /// A game run that ended with an error (S-006).
@@ -301,9 +304,16 @@ final class AppModel {
     }
 
     /// Downloads the patch data, patches AM2R 1.1 and adds the new profile (S-002 to S-004).
-    func startInstall() {
-        guard let source, installTask == nil else { return }
-        install = InstallState()
+    /// With `updating`, rebuilds that profile from the latest patch data instead (S-021): the new files are
+    /// built beside the old ones and swapped in only when complete; saves and config.ini live elsewhere.
+    func startInstall(updating: UUID? = nil) {
+        guard let source, installTask == nil, game == nil else { return }
+        let existing = updating.flatMap { id in ((try? container.mainContext.fetch(FetchDescriptor<Profile>())) ?? []).first { $0.uuid == id } }
+        if updating != nil && existing == nil { return }
+        var state = InstallState()
+        state.updating = existing?.uuid
+        state.updatingName = existing?.name
+        install = state
         let sourceURL = source.url, kind = AM2R11.Kind(rawValue: source.kindRaw) ?? .zip, root = source.root
         let rosetta = source.hasWindowsGame
         installTask = Task {
@@ -316,18 +326,30 @@ final class AppModel {
                 }
                 try Task.checkCancellation()
                 install?.step = .patch
-                let uuid = UUID()
+                let uuid = existing?.uuid ?? UUID()
                 let destination = DataFolder.profiles.appending(path: uuid.uuidString, directoryHint: .isDirectory)
                 let result = try await Task.detached(priority: .userInitiated) {
                     try ProfileBuilder.build(source: sourceURL, kind: kind, root: root, patchData: patchFolder, destination: destination) { step in
                         if step == .copy { Task { @MainActor in self.install?.step = .copy } }
                     }
                 }.value
-                let profile = addProfile(name: "Community Updates \(result.info.version)", version: result.info.version)
-                profile.uuid = uuid
+                let profile: Profile
+                if let existing {
+                    // A name the app gave follows the version; a name the player chose stays.
+                    if existing.name == "Community Updates \(existing.version)" { existing.name = "Community Updates \(result.info.version)" }
+                    existing.version = result.info.version
+                    existing.patchCommit = manifest.commit
+                    profile = existing
+                    // The swap replaced the Rosetta app too; build it again from the new files.
+                    if existing.engine == .rosetta, await !useRosetta(existing) { existing.engine = .native }
+                } else {
+                    profile = addProfile(name: "Community Updates \(result.info.version)", version: result.info.version)
+                    profile.uuid = uuid
+                    applyFirstSettings(to: profile)
+                }
                 profile.patchCommit = manifest.commit
-                applyFirstSettings(to: profile)
                 try? container.mainContext.save()
+                selection = profile.id
                 install?.finishedName = profile.name
                 try? await Task.sleep(for: .seconds(1))
                 install = nil

@@ -72,7 +72,9 @@ struct PlayPage: View {
 
 /// "Community Updates 1.5.6 is available" (S-020).
 struct UpdateBanner: View {
+    @Environment(AppModel.self) private var model
     let title: String
+    let profile: Profile
 
     var body: some View {
         HStack(spacing: Space.lg) {
@@ -80,6 +82,11 @@ struct UpdateBanner: View {
                 .foregroundStyle(Palette.accentText)
                 .gridProbe("update-message", area: "update-banner")
             Spacer(minLength: Space.lg)
+            Button("Update") { model.startInstall(updating: profile.uuid) }
+                .disabled(model.isPlaying || model.source == nil)
+                .help(model.source == nil
+                      ? "Choose AM2R 1.1 first (⌘O): the update patches it again."
+                      : "Download the update and patch this profile again. Saves and settings stay (⇧⌘U)")
         }
         .padding(.horizontal, Space.lg)
         .padding(.vertical, Space.md)
@@ -134,7 +141,7 @@ extension PlayPage {
                     .foregroundStyle(.secondary)
             }
             if let update = model.availableUpdate(for: profile) {
-                UpdateBanner(title: update)
+                UpdateBanner(title: update, profile: profile)
             } else if let message = model.updateCheckMessage {
                 Text(message)
                     .font(.callout)
