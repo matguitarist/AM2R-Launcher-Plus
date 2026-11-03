@@ -88,14 +88,46 @@ final class GameSource {
     var name: String { url.lastPathComponent }
 }
 
-/// Where profiles, patch data, logs and caches live (S-013 makes it movable).
+/// Where profiles, patch data, saves, logs and caches live. The player can move it (S-013).
 nonisolated enum DataFolder {
-    static var url: URL {
-        let base = Store.isOverridden
+    static let defaultsKey = "dataFolder"
+    /// Test and snapshot runs keep their moved location in memory, never in the real defaults.
+    nonisolated(unsafe) static var testLocation: URL?
+
+    static var defaultURL: URL {
+        Store.isOverridden
             ? Store.url.deletingLastPathComponent().appending(path: Store.url.deletingPathExtension().lastPathComponent + "-data", directoryHint: .isDirectory)
             : URL.applicationSupportDirectory.appending(path: "AM2RLauncherPlus", directoryHint: .isDirectory)
-        try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+    }
+
+    /// The chosen location, or the default.
+    static var url: URL {
+        let chosen = Store.isOverridden ? testLocation : UserDefaults.standard.string(forKey: defaultsKey).map { URL(fileURLWithPath: $0, isDirectory: true) }
+        let base = chosen ?? defaultURL
+        // Never recreate a folder on a disk that's unplugged: that would make a fake /Volumes/<disk>.
+        if FileManager.default.fileExists(atPath: base.deletingLastPathComponent().path) {
+            try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: false)
+        }
         return base
+    }
+
+    /// Remembers a new location; the default location is stored as no choice.
+    static func setLocation(_ url: URL) {
+        let isDefault = url.standardizedFileURL.path == defaultURL.standardizedFileURL.path
+        if Store.isOverridden {
+            testLocation = isDefault ? nil : url
+        } else if isDefault {
+            UserDefaults.standard.removeObject(forKey: defaultsKey)
+        } else {
+            UserDefaults.standard.set(url.path, forKey: defaultsKey)
+        }
+    }
+
+    /// The data was on a disk that isn't connected now.
+    static var isMissing: Bool {
+        let chosen = Store.isOverridden ? testLocation : UserDefaults.standard.string(forKey: defaultsKey).map { URL(fileURLWithPath: $0) }
+        guard let chosen else { return false }
+        return !FileManager.default.fileExists(atPath: chosen.deletingLastPathComponent().path)
     }
 
     static var hashCache: URL { url.appending(path: "Caches/hashes.json") }
@@ -200,7 +232,10 @@ final class AppModel {
     var showChooser = false
     /// Snapshot mode shows the welcome page even when profiles exist.
     var forceWelcome = false
-    private let hashCache = HashCache(file: DataFolder.hashCache)
+    private var hashCache = HashCache(file: DataFolder.hashCache)
+    /// Moving the data folder (S-013): bytes done and total, or a failure.
+    var dataMove: (done: Int64, total: Int64)?
+    var dataMoveError: String?
 
     init(container: ModelContainer) {
         self.container = container
@@ -346,6 +381,29 @@ final class AppModel {
             lastGameFailure = GameFailure(profile: game.profileID, log: game.log, status: status)
         }
         self.game = nil
+    }
+
+    /// Moves the data folder into `parent` (S-013). Not while the game runs or an install is going.
+    func moveDataFolder(into parent: URL) async {
+        guard game == nil, install == nil, dataMove == nil else { return }
+        dataMoveError = nil
+        dataMove = (0, 0)
+        let source = DataFolder.url
+        let result = await Task.detached(priority: .userInitiated) { () -> Result<URL, FolderMove.Failure> in
+            Result { () throws(FolderMove.Failure) in
+                try FolderMove.move(source, into: parent) { done, total in
+                    Task { @MainActor in self.dataMove = (done, total) }
+                }
+            }
+        }.value
+        switch result {
+        case .success(let moved):
+            DataFolder.setLocation(moved)
+            hashCache = HashCache(file: DataFolder.hashCache)
+        case .failure(let failure):
+            dataMoveError = failure.message
+        }
+        dataMove = nil
     }
 
     /// Records an installed profile and selects it. The install itself (S-002 to S-004) calls this when done.

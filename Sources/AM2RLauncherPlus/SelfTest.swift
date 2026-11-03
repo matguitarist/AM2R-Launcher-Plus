@@ -84,6 +84,27 @@ enum SelfTest {
                 try? context.save()
             }
 
+            // S-013: moving the data folder.
+            do {
+                let moving = model.addProfile(name: "Moving", version: "1.5.5")
+                try? FileManager.default.createDirectory(at: moving.folder, withIntermediateDirectories: true)
+                try? Data("game".utf8).write(to: moving.folder.appending(path: "game.ios"))
+                let original = DataFolder.url
+                let target = URL.temporaryDirectory.appending(path: "selftest-move-\(UUID().uuidString)", directoryHint: .isDirectory)
+                try? FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
+                await model.moveDataFolder(into: target)
+                check("the data folder moves", model.dataMoveError == nil && DataFolder.url.deletingLastPathComponent().path == target.resolvingSymlinksInPath().path,
+                      model.dataMoveError ?? DataFolder.url.path)
+                check("profiles follow the data folder", FileManager.default.fileExists(atPath: moving.folder.appending(path: "game.ios").path))
+                check("the old data folder is gone", !FileManager.default.fileExists(atPath: original.path))
+                await model.moveDataFolder(into: original.deletingLastPathComponent())
+                check("the data folder moves back", DataFolder.url.path == original.resolvingSymlinksInPath().path || DataFolder.url.path == original.path, DataFolder.url.path)
+                try? FileManager.default.removeItem(at: target)
+                try? FileManager.default.removeItem(at: moving.folder)
+                context.delete(moving)
+                try? context.save()
+            }
+
             // S-001: choosing AM2R 1.1
             let fake = URL.temporaryDirectory.appending(path: "selftest-fake-am2r", directoryHint: .isDirectory)
             try? FileManager.default.createDirectory(at: fake, withIntermediateDirectories: true)

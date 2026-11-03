@@ -1,3 +1,4 @@
+import AM2RLauncherPlusKit
 import AppKit
 import SwiftUI
 
@@ -55,8 +56,54 @@ enum SettingsTab: String, CaseIterable, Identifiable {
 }
 
 struct GeneralSettings: View {
+    @Environment(AppModel.self) private var model
+    @State private var choosing = false
+    @State private var size: Int64?
+
     var body: some View {
-        // Data folder (S-013) arrives here.
+        Section {
+            LabeledContent("Location") {
+                Text(DataFolder.url.path(percentEncoded: false).replacingOccurrences(of: NSHomeDirectory(), with: "~"))
+                    .truncationMode(.middle)
+                    .lineLimit(1)
+                    .textSelection(.enabled)
+                    .help(DataFolder.url.path(percentEncoded: false))
+            }
+            LabeledContent("Size", value: size.map { $0.formatted(.byteCount(style: .file).locale(.app)) } ?? "Calculating…")
+            if let move = model.dataMove {
+                ProgressView(value: Double(move.done), total: Double(max(move.total, 1))) {
+                    Text("Moving the data folder…")
+                }
+            }
+            if DataFolder.isMissing {
+                Label("The disk with the data folder isn't connected. Connect it, then reopen the app.", systemImage: "externaldrive.badge.exclamationmark")
+                    .symbolRenderingMode(.multicolor)
+            }
+            if let error = model.dataMoveError {
+                Label(error, systemImage: "exclamationmark.triangle.fill")
+                    .symbolRenderingMode(.multicolor)
+            }
+            HStack {
+                Spacer()
+                Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([DataFolder.url]) }
+                    .help("Show the data folder in Finder")
+                Button("Move…") { choosing = true }
+                    .help("Move profiles, saves and patch data to another folder, such as an external drive")
+                    .disabled(model.isPlaying || model.install != nil || model.dataMove != nil)
+            }
+        } header: {
+            Text("Data Folder")
+        } footer: {
+            Text(model.isPlaying ? "Quit AM2R to move the data folder." : "Profiles, saves, logs and patch data. Moving copies them, checks the copy, then deletes the old folder.")
+        }
+        .fileImporter(isPresented: $choosing, allowedContentTypes: [.folder]) { result in
+            guard case .success(let parent) = result else { return }
+            Task {
+                await model.moveDataFolder(into: parent)
+                await measure()
+            }
+        }
+        .task { await measure() }
         Section("Engine") {
             if let version = EngineInfo.version {
                 LabeledContent("Native", value: "Butterscotch \(version.prefix(7))")
@@ -74,6 +121,13 @@ struct GeneralSettings: View {
                     .foregroundStyle(.secondary)
             }
         }
+    }
+}
+
+extension GeneralSettings {
+    func measure() async {
+        let folder = DataFolder.url
+        size = await Task.detached(priority: .utility) { FolderMove.size(of: folder) }.value
     }
 }
 

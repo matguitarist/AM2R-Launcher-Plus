@@ -176,7 +176,7 @@ Thimble: f7d9603c
 Acceptance:
 - [unit] Moving copies, verifies, then deletes the old folder; a failure keeps the old one.
 - [snap] Settings › General shows the path, size, Move… and Reveal in Finder.
-Status: todo
+Status: done
 
 ### S-014 Use the Rosetta fallback for one profile
 As the player, if a profile misbehaves on Butterscotch I can switch it to the official runner.
