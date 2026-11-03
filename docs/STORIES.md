@@ -315,7 +315,7 @@ Acceptance:
 - [unit] Each option is read with the game's default and written without touching other lines.
 - [snap] The Extras section shows four toggles with descriptions.
 - [manual] The in-game timer shows on the HUD after turning it on.
-Status: todo
+Status: done (2026-11-03: owner saw the timer, early baby and counter work; Early Baby Metroid drops FPS on our engine, tracked separately)
 
 ### S-036 Play a Randovania seed
 As a randomizer player, I make a seed in Randovania and play it in the launcher.
