@@ -282,9 +282,60 @@ Acceptance:
 - [snap] The Mods page lists installed mods with Play, and the community mod list (gitlab.com/Miepee/AM2R-Mods) by group with Get; offline it says so with Try Again.
 Status: todo
 
+## M6 Our patch (0.4.0)
+
+One game patch of our own, "AM2R Launcher Plus patch", built with UndertaleModLib (a .NET tool on the developer's Mac only) and shipped in the app as an xdelta against the Community Updates game.ios the launcher installs. Players need no tools. Its features read keys the launcher writes to config.ini, so one patch serves every combination of settings. It is rebuilt for each Community Updates release; a profile on another version plays unpatched.
+
+### S-034 Button prompts that match my controller
+As the player with a PlayStation, Switch or other controller, I see that controller's buttons in the game's hints and menus, not Xbox letters.
+Screens: play (Controller section)
+Depends: S-011, S-033
+Thimble: 97133751
+Notes: AM2R draws prompts with get_button_sprite. The patch adds prompt sprite sets we draw ourselves (no console maker's art) and picks one by [Control] ButtonPrompts in config.ini. The launcher writes it from the connected controller (GCController productCategory), or from the player's choice.
+UX:
+- Flow: Play page > Controller > Button Prompts: Automatic (default), Xbox, PlayStation, Nintendo, Generic.
+- States: patch not available for this profile's version -> the picker is off, with footer "Button prompts need Community Updates <version>."
+- Words: "Button Prompts", "Automatic (matches your controller)".
+Acceptance:
+- [unit] A controller's product category maps to a prompt set; unknown ones get Generic.
+- [unit] The patch applies to the shipped Community Updates game.ios and the result starts with FORM.
+- [self] A patched profile with ButtonPrompts set starts and ends cleanly.
+- [manual] With a PlayStation controller, in-game hints show the PlayStation shapes.
+Status: todo
+
+### S-035 Comfort tweaks
+As the player, I turn on small changes that make AM2R easier to live with, each one on its own.
+Screens: play (Tweaks section)
+Depends: S-034
+Thimble: 8c36e1da
+Notes: Same patch, one config.ini key per tweak under [LauncherPlus]. First set: skip item get cutscenes' fanfare wait, faster save station, metroid counter per area on the map.
+UX:
+- Flow: Play page > Tweaks: one toggle per tweak, each with a one-line description; all off by default.
+- States: patch not available -> the section says why, as in S-034.
+Acceptance:
+- [unit] Each tweak toggle writes its key and leaves the rest of config.ini as it was.
+- [self] With every tweak on, the patched game starts and ends cleanly.
+- [manual] Each tweak does what its description says in a real game.
+Status: todo
+
+### S-036 Play a Randovania seed
+As a randomizer player, I make a seed in Randovania and play it in the launcher.
+Screens: profiles, install-randovania
+Depends: S-004, S-033
+Thimble: f110a069
+Notes: Randovania (with .NET) patches a folder holding AM2R.app/Contents/Resources/game.ios (Community Updates 1.5.5) and exports the same layout. The launcher makes that input folder from a Community Updates profile and imports the exported folder as a profile marked as a mod (native engine, no update banner, own saves).
+UX:
+- Flow: Profile > Prepare for Randovania… -> a folder in Finder to choose as Randovania's input; Profile > Import Randovania Game… (or drop the exported folder on Profiles) -> the install page -> the new profile's Play page.
+- Words: "Prepare for Randovania…", "Import Randovania Game…", error "This folder has no Randovania game. Export the seed from Randovania first."
+Acceptance:
+- [unit] An exported folder is recognized by AM2R.app/Contents/Resources/game.ios; anything else is refused with a reason.
+- [self] Preparing writes AM2R.app/Contents/Resources with the profile's game files; importing that folder back builds a profile.
+- [manual] A real Randovania seed exports from the prepared folder, imports, and plays.
+Status: todo
+
 ## Later
 - Metal renderer and MetalFX upscaling in Butterscotch (a4f648ca)
-- Randovania seeds (f110a069), mod browser (b9e9edd1), speedrun timer (ebb0cbde), Discord (bc5c6cc0)
+- Mod browser (b9e9edd1), speedrun timer (ebb0cbde), Discord (bc5c6cc0)
 - CLI / MCP (3d23b0ab), Rust data.win tools (c28e1acf), gmloader route (3bcc89ab)
 - Localization of the launcher
 
