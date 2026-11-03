@@ -248,7 +248,8 @@ Status: done
 Thimble: 78863e48
 Acceptance:
 - [manual] Fullscreen AM2R turns on macOS Game Mode (engine helper declares the games category).
-Status: todo
+Notes: Engine/Info.plist sets LSApplicationCategoryType games and LSSupportsGameMode; the engine uses native full screen. Seen 2026-11-03 in gamepolicyd's log: "Found game butterscotch (labelReason=LSSupportsGameMode)", "Game mode status is now on", off when the game quit. Check: `/usr/bin/log show --last 1h --predicate 'process == "gamepolicyd"' | grep -i "game mode"` (plain `log` is a zsh builtin).
+Status: done
 
 ### S-032 Signed, notarized, self-updating app
 Thimble: d8b988eb
