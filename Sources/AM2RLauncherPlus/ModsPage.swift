@@ -26,8 +26,8 @@ struct ModsPage: View {
             Section("Installed") {
                 if mods.isEmpty {
                     Text(model.source == nil
-                         ? "Install AM2R first. Mods are built on top of AM2R 1.1."
-                         : "No mods yet. Get one below, then choose Install Mod… or drop its zip here.")
+                         ? "Install AM2R first. Mods are patches to AM2R 1.1."
+                         : "No mods yet. Mods built on Community Updates 1.5 or later play here. Get one below, then choose Install Mod… or drop its zip here.")
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(mods) { mod in

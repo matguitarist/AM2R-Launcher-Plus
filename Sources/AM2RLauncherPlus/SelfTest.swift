@@ -360,6 +360,30 @@ enum SelfTest {
                         check("a refused mod adds no profile", profiles().count == before)
                         model.cancelInstall()
 
+                        // A mod built on AM2R 1.1 (here: a patch that keeps 1.1's game as it is) is refused.
+                        if let real = ProcessInfo.processInfo.environment["AM2R11_PATH"],
+                           let xdelta = ["/opt/homebrew/bin/xdelta3", "/usr/local/bin/xdelta3"].first(where: FileManager.default.isExecutableFile) {
+                            let dataWin = URL(fileURLWithPath: real).appending(path: "data.win")
+                            let delta = FileManager.default.temporaryDirectory.appending(path: "old-mod-\(UUID().uuidString).xdelta")
+                            let encode = Process()
+                            encode.executableURL = URL(fileURLWithPath: xdelta)
+                            encode.arguments = ["-e", "-f", "-s", dataWin.path, dataWin.path, delta.path]
+                            try? encode.run()
+                            encode.waitUntilExit()
+                            let oldMod = makeZip("Old Mod", files: ["profile.xml": Data(#"<message Version="1.0" Name="Old Mod" OperatingSystem="Windows" UsesYYC="False" />"#.utf8)],
+                                                 copying: ["data.xdelta": delta])
+                            let beforeOld = profiles().count
+                            model.startModInstall(zip: oldMod)
+                            for _ in 0..<1200 where model.install != nil && model.install?.failure == nil { try? await Task.sleep(for: .milliseconds(100)) }
+                            check("a mod built on AM2R 1.1 is refused with a reason",
+                                  model.install?.failure == ModPackage.Failure.builtOnAM2R11(name: "Old Mod 1.0").message, model.install?.failure ?? "installed")
+                            check("a refused AM2R 1.1 mod leaves no profile or files", profiles().count == beforeOld
+                                  && ((try? FileManager.default.contentsOfDirectory(atPath: DataFolder.profiles.path)) ?? []).count == beforeOld)
+                            model.cancelInstall()
+                            model.install = nil
+                            try? FileManager.default.removeItem(at: delta)
+                        }
+
                         // S-036: the folder Randovania asks for, and its export imported back as a profile.
                         let rdv = FileManager.default.temporaryDirectory.appending(path: "rdv-selftest-\(UUID().uuidString)", directoryHint: .isDirectory)
                         let rdvApp = try? RandovaniaGame.prepare(profile: installed.folder, into: rdv)

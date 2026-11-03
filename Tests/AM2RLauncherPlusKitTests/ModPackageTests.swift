@@ -122,6 +122,8 @@ func buildsAProfileFromAMod() throws {
     let result = try ProfileBuilder.build(source: game, kind: .folder, root: "", patch: .mod(extracted, package: package), destination: destination)
     let read = { (path: String) in try? String(contentsOf: result.folder.appending(path: path), encoding: .utf8) }
     #expect(read("game.ios")?.hasPrefix("MODDED ") == true)
+    // A test game has none of Community Updates' code: it counts as built on AM2R 1.1.
+    #expect(!ModPackage.isBuiltOnCommunityUpdates(game: result.folder.appending(path: "game.ios")))
     #expect(read("mustitle.ogg") == "mod title")
     #expect(result.info.version == "1.2")
     #expect(result.info.name == "Test Mod")
@@ -142,5 +144,6 @@ func installsARealMod() throws {
     let result = try ProfileBuilder.build(source: game, kind: .folder, root: "", patch: .mod(extracted, package: package), destination: destination)
     let head = try FileHandle(forReadingFrom: result.folder.appending(path: "game.ios")).read(upToCount: 4)
     #expect(head == Data("FORM".utf8))
+    print("REALMOD built on Community Updates: \(ModPackage.isBuiltOnCommunityUpdates(game: result.folder.appending(path: "game.ios")))")
     print("REALMOD \(package.name) \(package.version) by \(package.author), \(package.profile.operatingSystem), \(package.gamePatch) -> \(result.folder.path)")
 }

@@ -266,7 +266,7 @@ As the player, I add an AM2R mod zip and play it as its own profile next to Comm
 Screens: profiles, install-mod, install-mod-error, play-mod
 Depends: S-004, S-022
 Thimble: 3cab5910
-Notes: AM2RLauncher mod zips hold profile.xml (Name, Version, Author, OperatingSystem, UsesYYC, UsesCustomMusic, ProfileNotes), data.xdelta (Windows) or game.xdelta (Linux, Mac) against AM2R 1.1's data.win, AM2R.xdelta (a runner) and files_to_copy/. The native engine runs the patched game data of every system, so Windows and Linux mods play too. YYC mods have their code compiled into the runner and can't. Mods play on the native engine only; they get no Community Updates update banner.
+Notes: AM2RLauncher mod zips hold profile.xml (Name, Version, Author, OperatingSystem, UsesYYC, UsesCustomMusic, ProfileNotes), data.xdelta (Windows) or game.xdelta (Linux, Mac) against AM2R 1.1's data.win, AM2R.xdelta (a runner) and files_to_copy/. The native engine runs the patched game data of every system, so Windows and Linux mods play too. YYC mods have their code compiled into the runner and can't. Mods play on the native engine only; they get no Community Updates update banner. 2026-11-03, owner's call after FATE: mods built on AM2R 1.1's code (no Community Updates options in the patched game, told by the LowHealthWarning string) are refused after patching; the old code hit too many engine gaps. Their features can be ported to 1.5 later.
 UX:
 - Flow: Profile › Install Mod… (⌥⌘O), or drop a .zip on the Profiles page -> open panel filtered to .zip -> the install page "Installing <Mod> <version>" with Reading the mod, Patching AM2R 1.1, Copying game files -> the new profile's Play page. Way back: Cancel during install; Escape closes the open panel.
 - Surface: the same install page as Community Updates, in the main window; no sheet.
@@ -279,6 +279,7 @@ Acceptance:
 - [self] Installing a mod builds a profile with the mod's name, version and author, marked as a mod, on the native engine, with no update banner.
 - [snap] The install page shows the mod's name; the Play page shows the author.
 - [manual] A real community mod installs and plays.
+- [self] A mod built on AM2R 1.1 is refused with a reason and leaves no profile.
 - [snap] The Mods page lists installed mods with Play, and the community mod list (gitlab.com/Miepee/AM2R-Mods) by group with Get; offline it says so with Try Again.
 Status: todo
 

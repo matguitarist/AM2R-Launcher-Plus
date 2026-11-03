@@ -471,6 +471,10 @@ final class AppModel {
                         if step == .copy { Task { @MainActor in self.install?.step = .copy } }
                     }
                 }.value
+                guard ModPackage.isBuiltOnCommunityUpdates(game: destination.appending(path: "game.ios")) else {
+                    try? FileManager.default.removeItem(at: destination)
+                    throw ModPackage.Failure.builtOnAM2R11(name: title)
+                }
                 let profile = addProfile(name: title, version: package.version)
                 profile.uuid = uuid
                 profile.isMod = true

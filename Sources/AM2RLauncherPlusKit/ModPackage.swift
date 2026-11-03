@@ -56,6 +56,7 @@ public struct ModPackage: Equatable, Sendable {
         case notAMod
         case yyc(name: String)
         case noGamePatch(name: String)
+        case builtOnAM2R11(name: String)
 
         public var message: String {
             switch self {
@@ -63,8 +64,17 @@ public struct ModPackage: Equatable, Sendable {
             case .notAMod: "This zip isn't an AM2R mod. It has no profile.xml."
             case .yyc(let name): "\(name) is built with YYC, so it only runs with its own Windows runner."
             case .noGamePatch(let name): "\(name) has no patch for the game data."
+            case .builtOnAM2R11(let name): "\(name) is built on AM2R 1.1, which plays badly here. Mods built on Community Updates 1.5 or later work."
             }
         }
+    }
+
+    /// Whether a patched game is built on Community Updates (1.5 and later) rather than AM2R 1.1:
+    /// its code reads config.ini's LowHealthWarning, an option Community Updates added.
+    /// AM2R 1.1's older code hits more engine gaps, so mods built on it are refused.
+    public static func isBuiltOnCommunityUpdates(game: URL) -> Bool {
+        guard let data = try? Data(contentsOf: game, options: .alwaysMapped) else { return false }
+        return data.range(of: Data("LowHealthWarning".utf8)) != nil
     }
 
     public var zip: URL
