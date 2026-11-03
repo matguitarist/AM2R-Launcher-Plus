@@ -18,3 +18,5 @@ One name per thing. Buttons, menus, titles, tooltips, errors and VoiceOver label
 | Log | Text the game wrote while it ran | console, output, stdout |
 | Saves | The profile's save slots and its `config.ini` | save data, save files |
 | Data folder | Where profiles, patch data and logs live | library, storage, app support |
+| Layout | Which controller buttons open the map and the pause menu: Mac, Original, or Custom | preset, mapping, binding |
+| Game settings | Display, controller and language of one profile, kept in its config.ini (Settings > Game) | options, preferences |

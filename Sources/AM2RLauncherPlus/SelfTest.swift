@@ -61,6 +61,29 @@ enum SelfTest {
                 try? context.save()
             }
 
+            // S-010 to S-012: game settings in the profile's config.ini.
+            do {
+                let tuned = model.addProfile(name: "Tuned", version: "1.5.5")
+                let saves = GameRunner.saveFolder(for: tuned)
+                try? FileManager.default.createDirectory(at: saves, withIntermediateDirectories: true)
+                // An older profile that the game set up with its own layout and a custom key.
+                try? "[Screen]\nScale=\"3\"\n\n[Control]\nXBJoypadButtonStart=\"32778\"\nXBJoypadButtonExit=\"32780\"\nAimStyle=\"1\"\n"
+                    .write(to: GameSettings.configFile(in: saves), atomically: true, encoding: .utf8)
+                model.applyFirstSettings(to: tuned)
+                let first = GameSettings.read(from: saves)
+                check("an existing profile switches to the Mac controller layout once", first.controller == .mac && tuned.controllerLayoutSet)
+                check("the switch keeps the game's other settings", first.scale == 3
+                      && ((try? String(contentsOf: GameSettings.configFile(in: saves), encoding: .utf8))?.contains("AimStyle=\"1\"") ?? false))
+                var original = first
+                original.controller = .original
+                try? original.write(to: saves)
+                model.applyFirstSettings(to: tuned)
+                check("the player's later layout choice stands", GameSettings.read(from: saves).controller == .original)
+                try? FileManager.default.removeItem(at: saves)
+                context.delete(tuned)
+                try? context.save()
+            }
+
             // S-001: choosing AM2R 1.1
             let fake = URL.temporaryDirectory.appending(path: "selftest-fake-am2r", directoryHint: .isDirectory)
             try? FileManager.default.createDirectory(at: fake, withIntermediateDirectories: true)

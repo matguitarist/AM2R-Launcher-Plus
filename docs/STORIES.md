@@ -146,11 +146,11 @@ Acceptance:
 - [unit] Values are written to the profile save folder's `config.ini` under `[Screen]`
   (`Fullscreen`, `Scale`, `Widescreen`) without touching other keys.
 - [unit] Values the game changed itself are read back when Settings opens.
-Status: todo
+Status: done
 
 ### S-011 Use the Mac-friendly controller layout
 As the player, Select opens the map and Start opens the pause menu, out of the box.
-Screens: settings-controls
+Screens: settings-game
 Depends: S-004
 Thimble: e39bca3f
 Acceptance:
@@ -158,7 +158,7 @@ Acceptance:
   `XBJoypadButtonExit=32778`; preset "Original" writes 32778 / 32780.
 - [unit] New profiles get the Mac preset.
 - [snap] Controls shows the connected controller's name (GameController framework) or "No controller".
-Status: todo
+Status: done
 
 ### S-012 Pick the game language
 As the player, I choose the game language from the ones the profile ships.
@@ -167,7 +167,7 @@ Depends: S-004
 Thimble: 43c2d810
 Acceptance:
 - [unit] Languages are read from `lang/languages.txt`; the choice writes `[Screen] Language`.
-Status: todo
+Status: done
 
 ### S-013 Move the data folder
 As the player, I can move where profiles and patch data live (e.g. an external drive).

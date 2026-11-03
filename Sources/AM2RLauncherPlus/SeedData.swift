@@ -24,5 +24,14 @@ enum SeedData {
         context.insert(current)
         try? context.save()
         model.selection = current.id
+        // The game files a real install brings for Settings > Game: the language list.
+        let lang = current.folder.appending(path: "lang", directoryHint: .isDirectory)
+        try? FileManager.default.createDirectory(at: lang, withIntermediateDirectories: true)
+        let names = ["english.ini": "English", "french.ini": "Français", "german.ini": "Deutsch", "japanese.ini": "Japanese"]
+        try? names.keys.sorted { $0 == "english.ini" || ($1 != "english.ini" && $0 < $1) }.joined(separator: "\n")
+            .write(to: lang.appending(path: "languages.txt"), atomically: true, encoding: .utf8)
+        for (file, name) in names {
+            try? "[Header]\nLanguage = \"\(name)\"\n".write(to: lang.appending(path: file), atomically: true, encoding: .utf8)
+        }
     }
 }

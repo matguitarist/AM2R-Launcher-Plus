@@ -38,6 +38,8 @@ final class Profile {
     var playTime: Double = 0
     /// A stable id for folders, links and the agent CLI.
     var uuid: UUID = UUID()
+    /// The Mac controller layout was written once (S-011); after that the player's choice stands.
+    var controllerLayoutSet: Bool = false
 
     var engine: Engine {
         get { Engine(rawValue: engineRaw) ?? .native }
@@ -254,6 +256,7 @@ final class AppModel {
                 let profile = addProfile(name: "Community Updates \(result.info.version)", version: result.info.version)
                 profile.uuid = uuid
                 profile.patchCommit = manifest.commit
+                applyFirstSettings(to: profile)
                 try? container.mainContext.save()
                 install?.finishedName = profile.name
                 try? await Task.sleep(for: .seconds(1))
@@ -283,11 +286,23 @@ final class AppModel {
         return all.first { $0.id == selection } ?? all.first
     }
 
+    /// New profiles start with the Mac controller layout: Select = map, Start = pause (S-011).
+    func applyFirstSettings(to profile: Profile) {
+        guard !profile.controllerLayoutSet else { return }
+        let saves = GameRunner.saveFolder(for: profile)
+        var settings = GameSettings.read(from: saves)
+        settings.controller = .mac
+        try? settings.write(to: saves)
+        profile.controllerLayoutSet = true
+        try? container.mainContext.save()
+    }
+
     /// Plays the current profile on the native engine (S-005).
     func play(extraArguments: [String] = []) {
         guard game == nil, let profile = currentProfile else { return }
         playError = nil
         lastGameFailure = nil
+        applyFirstSettings(to: profile)
         do {
             game = try GameRunner(profile: profile, extraArguments: extraArguments) { [weak self] status in
                 self?.gameEnded(status: status)
