@@ -2,9 +2,7 @@ import Foundation
 import SwiftData
 
 /// Sample data for snapshots: APP_SEED=1 with APP_STORE in /tmp fills an empty
-/// store with realistic items (short and long titles, starred and not).
-/// Replace these with your app's own types. Seed only what a person can
-/// create in the app, or the snapshots show features no one can use.
+/// store with profiles a person can get by installing from AM2R 1.1.
 @MainActor
 enum SeedData {
     static func insertIfRequested(into model: AppModel) {
@@ -14,23 +12,17 @@ enum SeedData {
             return
         }
         let context = model.container.mainContext
-        guard ((try? context.fetchCount(FetchDescriptor<Item>())) ?? 0) == 0 else { return }
-        let samples: [(String, Bool)] = [
-            ("Book the dentist", false),
-            ("Read the article about local-first software and write down three ideas worth trying", true),
-            ("Renew passport", false),
-            ("Plan the weekend trip", true),
-            ("Call Anna", false),
-            ("Back up the photo library to the external drive before the trip", false),
-            ("Groceries", false),
-            ("Draft the quarterly review", true),
-        ]
-        for (index, sample) in samples.enumerated() {
-            let item = Item(title: sample.0)
-            item.isStarred = sample.1
-            item.createdAt = Date.now.addingTimeInterval(Double(-index) * 3_600)
-            context.insert(item)
-        }
+        guard ((try? context.fetchCount(FetchDescriptor<Profile>())) ?? 0) == 0 else { return }
+        let older = Profile(name: "Community Updates 1.5.4", version: "1.5.4")
+        older.engine = .rosetta
+        older.installedAt = Date.now.addingTimeInterval(-90 * 86_400)
+        older.playTime = 11 * 3_600
+        context.insert(older)
+        let current = Profile(name: "Community Updates 1.5.5", version: "1.5.5")
+        current.lastPlayedAt = Date.now.addingTimeInterval(-3_600)
+        current.playTime = 2 * 3_600 + 14 * 60
+        context.insert(current)
         try? context.save()
+        model.selection = current.id
     }
 }

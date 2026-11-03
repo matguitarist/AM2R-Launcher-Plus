@@ -6,7 +6,7 @@ import SwiftUI
 //   AM2RLauncherPlus                      the app
 //   APP_STORE=<file> AM2RLauncherPlus     use another database (tests, experiments)
 //   APP_SNAPSHOT=<dir> AM2RLauncherPlus   save a PNG of every sidebar page and Settings tab in light and dark mode, then quit
-//   APP_SEED=1 AM2RLauncherPlus           fill an empty /tmp store with sample items (tools/snap.sh)
+//   APP_SEED=1 AM2RLauncherPlus           fill an empty /tmp store with sample profiles (tools/snap.sh)
 //   AM2RLauncherPlus --selftest           run the self-test on a /tmp store and quit with 0 or 1 (tools/selftest.sh)
 //   APP_ACCENT=<id> AM2RLauncherPlus      run with another accent from Theme.all (UI/Theme.swift)
 //   APP_GRID=1 AM2RLauncherPlus           draw the 8 pt grid and the layout probes over the window
@@ -17,7 +17,7 @@ struct AM2RLauncherPlusApp: App {
     @State private var model = AppModel(container: Store.makeContainer())
 
     var body: some Scene {
-        Window("AM2RLauncherPlus", id: "main") {
+        Window("AM2R Launcher Plus", id: "main") {
             ContentView()
                 .environment(model)
                 .themed()
@@ -30,10 +30,8 @@ struct AM2RLauncherPlusApp: App {
         .commands {
             SidebarCommands()
             ToolbarCommands()
-            CommandGroup(replacing: .newItem) {
-                Button("New Item") { model.addItem() }
-                    .keyboardShortcut("n")
-            }
+            // Install Profile… (⌘N) and Play (⌘P) arrive with S-001 and S-005.
+            CommandGroup(replacing: .newItem) {}
         }
 
         Settings {
@@ -78,7 +76,7 @@ enum Store {
 
     static func makeContainer() -> ModelContainer {
         do {
-            return try ModelContainer(for: Item.self, configurations: ModelConfiguration(url: url))
+            return try ModelContainer(for: Profile.self, configurations: ModelConfiguration(url: url))
         } catch {
             fatalError("Could not open the database at \(url.path): \(error)")
         }

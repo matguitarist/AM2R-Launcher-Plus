@@ -8,11 +8,11 @@ struct ContentView: View {
     var body: some View {
         NavigationSplitView {
             sidebar
-        } content: {
-            ItemList(page: model.sidebar ?? .all)
-                .navigationSplitViewColumnWidth(min: 260, ideal: 320)
         } detail: {
-            ItemDetail()
+            switch model.sidebar ?? .play {
+            case .play: PlayPage()
+            case .profiles: ProfilesPage()
+            }
         }
         .task {
             SeedData.insertIfRequested(into: model)
@@ -31,61 +31,70 @@ struct ContentView: View {
     }
 }
 
-struct ItemList: View {
-    @Environment(AppModel.self) private var model
-    @Environment(\.modelContext) private var context
-    @Query(sort: \Item.createdAt, order: .reverse) private var items: [Item]
-    let page: SidebarItem
-
-    private var visible: [Item] {
-        page == .starred ? items.filter(\.isStarred) : items
-    }
-
-    var body: some View {
-        @Bindable var model = model
-        List(visible, selection: $model.selection) { item in
-            Label(item.title, systemImage: item.isStarred ? "star.fill" : "circle")
-                .tag(item.id)
-                .contextMenu {
-                    Button("Delete", role: .destructive) { context.delete(item) }
-                }
-        }
-        .overlay {
-            if visible.isEmpty {
-                ContentUnavailableView(
-                    "No Items",
-                    systemImage: page.symbol,
-                    description: Text("Press Command-N to add one.")
-                )
-            }
-        }
-        .navigationTitle(page.title)
-        .toolbar {
-            ToolbarItem {
-                Button("New Item", systemImage: "plus") { model.addItem() }
-                    .help("Add an item (Command-N)")
-            }
-        }
+/// The selected profile, or the most recently installed one.
+private struct CurrentProfile {
+    static func pick(_ profiles: [Profile], selection: PersistentIdentifier?) -> Profile? {
+        profiles.first { $0.id == selection } ?? profiles.first
     }
 }
 
-struct ItemDetail: View {
+struct PlayPage: View {
     @Environment(AppModel.self) private var model
-    @Query private var items: [Item]
+    @Query(sort: \Profile.installedAt, order: .reverse) private var profiles: [Profile]
 
     var body: some View {
-        if let item = items.first(where: { $0.id == model.selection }) {
-            @Bindable var item = item
-            Form {
-                TextField("Title", text: $item.title)
-                Toggle("Starred", isOn: $item.isStarred)
-                TextField("Notes", text: $item.notes, axis: .vertical)
-                    .lineLimit(4...)
-            }
-            .formStyle(.grouped)
-            } else {
-            ContentUnavailableView("No Selection", systemImage: "sidebar.right")
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        Group {
+            if let profile = CurrentProfile.pick(profiles, selection: model.selection) {
+                VStack(spacing: Space.lg) {
+                    Text(profile.name)
+                        .font(.largeTitle.bold())
+                    HStack(spacing: Space.sm) {
+                        Text("Version \(profile.version)")
+                        Text(profile.engine.title)
+                            .help(profile.engine.help)
+                    }
+                    .foregroundStyle(.secondary)
+                    // Play arrives with S-005.
+                    Button("Play", systemImage: "play.fill") {}
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.extraLarge)
+                        .disabled(true)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                // The welcome page arrives with S-001.
+                ContentUnavailableView(
+                    "Install AM2R on this Mac",
+                    systemImage: "gamecontroller",
+                    description: Text("You'll need your AM2R 1.1 copy (AM2R_11.zip).")
+                )
+            }
+        }
+        .navigationTitle("Play")
+    }
+}
+
+struct ProfilesPage: View {
+    @Environment(AppModel.self) private var model
+    @Query(sort: \Profile.installedAt, order: .reverse) private var profiles: [Profile]
+
+    var body: some View {
+        @Bindable var model = model
+        List(profiles, selection: $model.selection) { profile in
+            VStack(alignment: .leading, spacing: Space.xs) {
+                Text(profile.name)
+                Text("\(profile.version) · \(profile.engine.title)")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+            .tag(profile.id)
+        }
+        .overlay {
+            if profiles.isEmpty {
+                ContentUnavailableView("No Profiles", systemImage: SidebarItem.profiles.symbol,
+                                       description: Text("Install Community Updates from the Play page."))
+            }
+        }
+        .navigationTitle("Profiles")
     }
 }

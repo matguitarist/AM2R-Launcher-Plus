@@ -2,37 +2,71 @@ import Foundation
 import SwiftData
 import AM2RLauncherPlusKit
 
-@Model
-final class Item {
-    var title: String
-    var notes: String = ""
-    var isStarred: Bool = false
-    var createdAt: Date = Date.now
-    /// A stable id for links, sync, and the agent CLI.
-    var uuid: UUID = UUID()
-
-    init(title: String) {
-        self.title = title
-    }
-}
-
-/// The sidebar pages. Snapshot mode walks through every case.
-enum SidebarItem: String, CaseIterable, Identifiable {
-    case all, starred
+/// What runs the game. See docs/GLOSSARY.md: "Native" and "Rosetta".
+enum Engine: String, Codable, CaseIterable, Identifiable {
+    case native, rosetta
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .all: "All Items"
-        case .starred: "Starred"
+        case .native: "Native"
+        case .rosetta: "Rosetta"
+        }
+    }
+
+    var help: String {
+        switch self {
+        case .native: "Runs natively on Apple silicon"
+        case .rosetta: "Runs the official game runner with Rosetta"
+        }
+    }
+}
+
+/// One installed, playable game with its own saves and settings.
+@Model
+final class Profile {
+    var name: String
+    /// Community Updates version from the patch data's profile.xml, e.g. "1.5.5".
+    var version: String
+    var engineRaw: String = Engine.native.rawValue
+    /// Commit of the patch data this profile was installed from.
+    var patchCommit: String = ""
+    var installedAt: Date = Date.now
+    var lastPlayedAt: Date?
+    /// Total play time in seconds.
+    var playTime: Double = 0
+    /// A stable id for folders, links and the agent CLI.
+    var uuid: UUID = UUID()
+
+    var engine: Engine {
+        get { Engine(rawValue: engineRaw) ?? .native }
+        set { engineRaw = newValue.rawValue }
+    }
+
+    init(name: String, version: String) {
+        self.name = name
+        self.version = version
+    }
+}
+
+/// The sidebar pages. Snapshot mode walks through every case.
+enum SidebarItem: String, CaseIterable, Identifiable {
+    case play, profiles
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .play: "Play"
+        case .profiles: "Profiles"
         }
     }
 
     var symbol: String {
         switch self {
-        case .all: "tray"
-        case .starred: "star"
+        case .play: "play.circle"
+        case .profiles: "square.stack"
         }
     }
 }
@@ -41,7 +75,7 @@ enum SidebarItem: String, CaseIterable, Identifiable {
 @Observable
 final class AppModel {
     let container: ModelContainer
-    var sidebar: SidebarItem? = .all
+    var sidebar: SidebarItem? = .play
     var selection: PersistentIdentifier?
     /// Settings reopens on the last tab. Test and snapshot runs leave it alone.
     var settingsTab: SettingsTab = SettingsTab(rawValue: UserDefaults.standard.string(forKey: "settings.tab") ?? "") ?? .general {
@@ -52,10 +86,12 @@ final class AppModel {
         self.container = container
     }
 
-    func addItem(title: String = "") {
-        let item = Item(title: ItemTitle.clean(title))
-        if sidebar == .starred { item.isStarred = true }
-        container.mainContext.insert(item)
-        selection = item.id
+    /// Records an installed profile and selects it. The install itself (S-002 to S-004) calls this when done.
+    @discardableResult
+    func addProfile(name: String, version: String) -> Profile {
+        let profile = Profile(name: ProfileName.clean(name), version: version)
+        container.mainContext.insert(profile)
+        selection = profile.id
+        return profile
     }
 }

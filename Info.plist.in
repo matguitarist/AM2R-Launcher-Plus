@@ -3,7 +3,7 @@
 <plist version="1.0"><dict>
 <key>CFBundleIdentifier</key><string>com.mathieu.am2rlauncherplus</string>
 <key>CFBundleName</key><string>AM2RLauncherPlus</string>
-<key>CFBundleDisplayName</key><string>AM2RLauncherPlus</string>
+<key>CFBundleDisplayName</key><string>AM2R Launcher Plus</string>
 <key>CFBundleExecutable</key><string>AM2RLauncherPlus</string>
 <key>CFBundleIconFile</key><string>AppIcon</string>
 <key>CFBundleIconName</key><string>AppIcon</string>

@@ -54,11 +54,10 @@ enum SettingsTab: String, CaseIterable, Identifiable {
 }
 
 struct GeneralSettings: View {
-    @AppStorage("confirmDelete") private var confirmDelete = true
-
     var body: some View {
-        Section("Items") {
-            Toggle("Ask before deleting items", isOn: $confirmDelete)
+        // Engine (S-007) and data folder (S-013) arrive here.
+        Section("Engine") {
+            LabeledContent("Engine", value: Engine.native.title)
         }
     }
 }

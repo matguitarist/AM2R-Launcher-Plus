@@ -1,6 +1,5 @@
 import AppKit
 import SwiftData
-import AM2RLauncherPlusKit
 
 /// Self-test for agents: runs the app's real functions on a test store,
 /// prints PASS or FAIL per check, and quits with exit code 0 or 1.
@@ -26,21 +25,17 @@ enum SelfTest {
         Task {
             try? await Task.sleep(for: .seconds(0.5))
             let context = model.container.mainContext
-            func items() -> [Item] { (try? context.fetch(FetchDescriptor<Item>())) ?? [] }
+            func profiles() -> [Profile] { (try? context.fetch(FetchDescriptor<Profile>())) ?? [] }
 
-            let before = items().count
-            model.addItem()
-            check("New Item adds one item", items().count == before + 1)
-            check("the new item is selected", model.selection != nil)
-
-            if let item = items().first(where: { $0.id == model.selection }) {
-                item.isStarred.toggle()
-                check("starring an item marks it starred", item.isStarred)
-                context.delete(item)
-                try? context.save()
-                check("deleting the item removes it", items().count == before)
-            }
-            check("titles are cleaned", ItemTitle.clean("  Buy   milk ") == "Buy milk")
+            let before = profiles().count
+            let profile = model.addProfile(name: "  Community   Updates 1.5.5 ", version: "1.5.5")
+            check("adding a profile stores it", profiles().count == before + 1)
+            check("the new profile is selected", model.selection == profile.id)
+            check("profile names are cleaned", profile.name == "Community Updates 1.5.5")
+            check("new profiles use the native engine", profile.engine == .native)
+            context.delete(profile)
+            try? context.save()
+            check("deleting the profile removes it", profiles().count == before)
 
             print(failures == 0 ? "SELFTEST PASS \(count) checks" : "SELFTEST FAIL \(failures) of \(count) checks")
             finish(code: failures == 0 ? 0 : 1)
