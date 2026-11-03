@@ -37,6 +37,22 @@ enum SelfTest {
             try? context.save()
             check("deleting the profile removes it", profiles().count == before)
 
+            // S-001: choosing AM2R 1.1
+            let fake = URL.temporaryDirectory.appending(path: "selftest-fake-am2r", directoryHint: .isDirectory)
+            try? FileManager.default.createDirectory(at: fake, withIntermediateDirectories: true)
+            try? Data("not the game".utf8).write(to: fake.appending(path: "data.win"))
+            await model.choose(fake)
+            check("a modified data.win is rejected with its reason", model.welcome == .failed(.wrongDataWin, fake.lastPathComponent))
+            check("a rejected copy isn't kept", model.source == nil)
+            if let real = ProcessInfo.processInfo.environment["AM2R11_PATH"] {
+                await model.choose(URL(fileURLWithPath: real))
+                check("the real AM2R 1.1 is accepted", model.welcome == .ready, "\(model.welcome)")
+                check("the accepted copy is kept with its bookmark", model.source?.bookmark != nil && model.source?.url.path == real)
+                check("AM2R.exe is recognized for Rosetta", model.source?.hasWindowsGame == true)
+                let reopened = AppModel(container: model.container)
+                check("the copy is still chosen after a restart", reopened.welcome == .ready && reopened.source?.path == real)
+            }
+
             print(failures == 0 ? "SELFTEST PASS \(count) checks" : "SELFTEST FAIL \(failures) of \(count) checks")
             finish(code: failures == 0 ? 0 : 1)
         }

@@ -30,8 +30,11 @@ struct AM2RLauncherPlusApp: App {
         .commands {
             SidebarCommands()
             ToolbarCommands()
-            // Install Profile… (⌘N) and Play (⌘P) arrive with S-001 and S-005.
-            CommandGroup(replacing: .newItem) {}
+            // Play (⌘P) arrives with S-005.
+            CommandGroup(replacing: .newItem) {
+                Button("Choose AM2R 1.1…") { model.showChooser = true }
+                    .keyboardShortcut("o")
+            }
         }
 
         Settings {
@@ -76,7 +79,7 @@ enum Store {
 
     static func makeContainer() -> ModelContainer {
         do {
-            return try ModelContainer(for: Profile.self, configurations: ModelConfiguration(url: url))
+            return try ModelContainer(for: Profile.self, GameSource.self, configurations: ModelConfiguration(url: url))
         } catch {
             fatalError("Could not open the database at \(url.path): \(error)")
         }

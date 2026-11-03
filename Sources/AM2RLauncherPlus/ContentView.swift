@@ -44,7 +44,7 @@ struct PlayPage: View {
 
     var body: some View {
         Group {
-            if let profile = CurrentProfile.pick(profiles, selection: model.selection) {
+            if !model.forceWelcome, let profile = CurrentProfile.pick(profiles, selection: model.selection) {
                 VStack(spacing: Space.lg) {
                     Text(profile.name)
                         .font(.largeTitle.bold())
@@ -62,12 +62,7 @@ struct PlayPage: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                // The welcome page arrives with S-001.
-                ContentUnavailableView(
-                    "Install AM2R on this Mac",
-                    systemImage: "gamecontroller",
-                    description: Text("You'll need your AM2R 1.1 copy (AM2R_11.zip).")
-                )
+                WelcomePage()
             }
         }
         .navigationTitle("Play")

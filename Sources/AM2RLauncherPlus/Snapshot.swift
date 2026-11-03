@@ -38,6 +38,26 @@ enum Snapshot {
                     capture(to: "\(dir)/\(page.rawValue)-\(mode).png")
                 }
             }
+            // Welcome page states (S-001): welcome, welcome-checking, welcome-error, welcome-ready.
+            let welcomeStates: [(String, WelcomeState)] = [
+                ("welcome", .empty),
+                ("welcome-checking", .checking("AM2R_11.zip")),
+                ("welcome-error", .failed(.wrongDataWin, "AM2R_11.zip")),
+                ("welcome-ready", .ready),
+            ]
+            let savedWelcome = model.welcome
+            for (name, state) in welcomeStates where only?.contains(name) ?? true {
+                model.sidebar = .play
+                model.forceWelcome = true
+                model.welcome = state
+                for mode in ["light", "dark"] {
+                    NSApp.appearance = NSAppearance(named: mode == "light" ? .aqua : .darkAqua)
+                    try? await Task.sleep(for: .seconds(0.8))
+                    capture(to: "\(dir)/\(name)-\(mode).png")
+                }
+            }
+            model.forceWelcome = false
+            model.welcome = savedWelcome
             if only == nil || only?.contains("settings") == true {
                 let main = NSApp.windows.first { $0.canBecomeMain && !$0.isSheet }
                 openSettings()

@@ -27,7 +27,7 @@ UX:
 - States: empty "Install AM2R on this Mac. Drop your AM2R_11.zip here, or choose it." with Choose…; loading "Checking AM2R 1.1…" (hashing ~1 s); error inline under the drop zone: "This isn't AM2R 1.1. Its data.win doesn't match the 1.1 release." / "No data.win in this folder." with Choose Another…; done: checkmark + file name (middle-truncated, full path in tooltip).
 - Words: "Choose…", "Choose Another…", "Install Community Updates", note under the zone: "Your copy stays where it is. Nothing is uploaded."
 - Access: drop zone is a button ("Choose AM2R 1.1"), Return activates it; status changes are announced; error has an icon and words, not only red.
-Status: todo
+Status: done
 
 ### S-002 Download the Community Updates patch data
 As the player, after my 1.1 is accepted the app downloads the latest Mac patch data.
