@@ -301,7 +301,7 @@ Acceptance:
 - [unit] The set is read from and written to [Extras] Controller, leaving other lines as they were.
 - [self] Automatic writes the connected controller's set at Play; a fixed choice is kept.
 - [manual] With a PlayStation controller, in-game hints show the PlayStation shapes.
-Status: todo
+Status: done (2026-11-03: owner saw the PlayStation hint in game after patch 0010)
 
 ### S-035 Game extras
 As the player, I turn on the game's extra options from the launcher: the in-game timer, the low health alarm, the early baby Metroid, and extreme lab Metroids.
