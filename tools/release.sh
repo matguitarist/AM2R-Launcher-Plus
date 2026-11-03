@@ -30,6 +30,13 @@ xcrun notarytool history --keychain-profile "$notary_profile" >/dev/null 2>&1 \
   || { echo "no notary credentials: run xcrun notarytool store-credentials $notary_profile (see the top of this script)"; exit 1; }
 
 # 1. Build and sign with Developer ID, hardened runtime and a secure timestamp.
+# build.sh replaces ~/Applications/$name.app. A copy still running from there no longer matches
+# its signature, and Sparkle's installer then refuses it ("An error occurred while running the updater").
+if pgrep -qf "$HOME/Applications/$name.app/Contents/MacOS/"; then
+  echo "quitting the running $name: the build replaces it"
+  osascript -e "quit app \"$name\"" 2>/dev/null || true
+  sleep 1
+fi
 echo "$version" > "$here/VERSION"
 SIGN_IDENTITY=$identity SIGN_OPTIONS="--options runtime --timestamp" "$here/build.sh"
 app="$HOME/Applications/$name.app"
