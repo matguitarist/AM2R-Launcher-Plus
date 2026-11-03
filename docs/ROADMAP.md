@@ -61,8 +61,8 @@ renderer then, so a Metal renderer, MetalFX upscaling and shader filters become 
 - **Rust: not on day one.** It earns a place later for one job: a fast, safe parser and differ for
   GameMaker `data.win`/`game.ios` files (mod inspection, building mods from a modified game,
   conflict checks). Expose it with UniFFI as a static lib. Until then, Swift + C covers it.
-- **Licensing:** AM2RLauncher is GPLv3. Logic ported from it makes this project GPLv3 too —
-  decide up front (GPLv3, or a clean-room rewrite from the behavior described above).
+- **Licensing:** this project is GPL-3.0-or-later (decided 2026-11-03), like AM2RLauncher and the
+  Mac patch data.
   AM2R-Community-Updates is "all rights reserved": consume its published patches only, never
   redistribute game files. AM2RLauncher's AGENTS.md asks that agent-driven work not be sent upstream;
   keep this project separate.

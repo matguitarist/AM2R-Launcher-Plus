@@ -52,4 +52,4 @@ first. Play page has a large game art header. _Decided by the agent._
 - Never ship or redistribute AM2R game files; the user's 1.1 is the only source.
 - Butterscotch is AGPL-3.0: bundled as a separate executable, our patches kept in
   `patches/butterscotch/` and offered upstream.
-- Project license still open (Thimble task 7571e786, owner's call).
+- License: GPL-3.0-or-later (owner's decision, 2026-11-03), matching AM2RLauncher and the patch data. `LICENSE` holds the text.

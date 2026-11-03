@@ -50,3 +50,7 @@ The bama plugin has a skill for each step: `mac-design` (design rules),
 ## Git
 
 - Commit after each working change, with a message that says what the user can now do.
+
+## License
+
+GPL-3.0-or-later (`LICENSE`). The bundled Butterscotch engine is AGPL-3.0 and ships as a separate executable with its source and our patches (`patches/butterscotch/`). Never add AM2R game files to this repo.
