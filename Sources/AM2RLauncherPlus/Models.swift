@@ -23,6 +23,19 @@ enum Engine: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+/// Rosetta 2 on this Mac (S-014). APP_ROSETTA=missing shows the not-installed state in snapshots.
+enum Rosetta {
+    static var isInstalled: Bool {
+        ProcessInfo.processInfo.environment["APP_ROSETTA"] == "missing" ? false : RosettaApp.isRosettaInstalled
+    }
+}
+
+/// Why a profile can't use Rosetta (S-014), shown under the engine picker.
+struct EngineError: Equatable {
+    var profile: UUID
+    var message: String
+}
+
 /// One installed, playable game with its own saves and settings.
 @Model
 final class Profile {
@@ -243,6 +256,14 @@ final class AppModel {
     /// Moving the data folder (S-013): bytes done and total, or a failure.
     var dataMove: (done: Int64, total: Int64)?
     var dataMoveError: String?
+    /// The profile whose Rosetta app is being built (S-014).
+    var rosettaBuild: UUID?
+    var engineError: EngineError?
+    var rosettaInstalled = Rosetta.isInstalled
+    var installingRosetta = false
+    /// Asks before installing Rosetta (engine picker, Game > Engine > Install Rosetta…).
+    var confirmRosettaInstall = false
+    var rosettaInstallError: String?
 
     init(container: ModelContainer) {
         self.container = container
@@ -339,7 +360,7 @@ final class AppModel {
         try? container.mainContext.save()
     }
 
-    /// Plays the current profile on the native engine (S-005).
+    /// Plays the current profile on its engine (S-005, S-014).
     func play(extraArguments: [String] = []) {
         guard game == nil, let profile = currentProfile else { return }
         playError = nil
@@ -389,6 +410,76 @@ final class AppModel {
             lastGameFailure = GameFailure(profile: game.profileID, log: game.log, status: status)
         }
         self.game = nil
+    }
+
+    /// Game > Engine and the engine picker (S-014). Rosetta builds the profile's AM2R.app first, once.
+    func setEngine(_ engine: Engine, for profile: Profile) {
+        guard !isPlaying, rosettaBuild == nil, engine != profile.engine else { return }
+        engineError = nil
+        if engine == .native || RosettaApp.app(in: profile.folder) != nil {
+            profile.engine = engine
+            try? container.mainContext.save()
+        } else {
+            Task { await useRosetta(profile) }
+        }
+    }
+
+    /// Builds `<profile>/AM2R.app` from AM2R 1.1's AM2R.exe and the profile's patch data, then switches to Rosetta.
+    @discardableResult
+    func useRosetta(_ profile: Profile) async -> Bool {
+        guard rosettaBuild == nil else { return false }
+        guard let source, source.hasWindowsGame else {
+            engineError = EngineError(profile: profile.uuid, message: RosettaApp.Failure.noWindowsGame.message)
+            return false
+        }
+        guard !profile.patchCommit.isEmpty else {
+            engineError = EngineError(profile: profile.uuid, message: RosettaApp.Failure.noRunnerPatch.message)
+            return false
+        }
+        rosettaBuild = profile.uuid
+        defer { rosettaBuild = nil }
+        let sourceURL = source.url, kind = AM2R11.Kind(rawValue: source.kindRaw) ?? .zip, root = source.root
+        let patch = DataFolder.patchData.appending(path: profile.patchCommit, directoryHint: .isDirectory)
+        let folder = profile.folder, id = RosettaApp.bundleIdentifier(for: profile.uuid)
+        let result = await Task.detached(priority: .userInitiated) { () -> Result<URL, RosettaApp.Failure> in
+            Result { () throws(RosettaApp.Failure) in
+                try RosettaApp.build(source: sourceURL, kind: kind, root: root, patchData: patch, profileFolder: folder, bundleIdentifier: id)
+            }
+        }.value
+        switch result {
+        case .success:
+            profile.engine = .rosetta
+            try? container.mainContext.save()
+            return true
+        case .failure(let failure):
+            engineError = EngineError(profile: profile.uuid, message: failure.message)
+            return false
+        }
+    }
+
+    /// Installs Rosetta 2 with Apple's softwareupdate, after the system asks for an administrator password.
+    func installRosetta() async {
+        guard !installingRosetta else { return }
+        installingRosetta = true
+        rosettaInstallError = nil
+        let output = await Task.detached { () -> String in
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+            process.arguments = ["-e", #"do shell script "/usr/sbin/softwareupdate --install-rosetta --agree-to-license" with administrator privileges"#]
+            let pipe = Pipe()
+            process.standardOutput = pipe
+            process.standardError = pipe
+            guard (try? process.run()) != nil else { return "" }
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            process.waitUntilExit()
+            return String(decoding: data, as: UTF8.self)
+        }.value
+        installingRosetta = false
+        rosettaInstalled = Rosetta.isInstalled
+        // -128: the person cancelled the password prompt.
+        if !rosettaInstalled && !output.contains("-128") {
+            rosettaInstallError = "Unable to install Rosetta. Check your connection, then try again."
+        }
     }
 
     /// Moves the data folder into `parent` (S-013). Not while the game runs or an install is going.

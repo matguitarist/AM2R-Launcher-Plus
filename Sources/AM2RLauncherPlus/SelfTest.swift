@@ -89,6 +89,8 @@ enum SelfTest {
                 let moving = model.addProfile(name: "Moving", version: "1.5.5")
                 try? FileManager.default.createDirectory(at: moving.folder, withIntermediateDirectories: true)
                 try? Data("game".utf8).write(to: moving.folder.appending(path: "game.ios"))
+                // The Play page loads (and may write) the new profile's config.ini; let it finish before the move.
+                try? await Task.sleep(for: .seconds(1))
                 let original = DataFolder.url
                 let target = URL.temporaryDirectory.appending(path: "selftest-move-\(UUID().uuidString)", directoryHint: .isDirectory)
                 try? FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
@@ -102,6 +104,32 @@ enum SelfTest {
                 try? FileManager.default.removeItem(at: target)
                 try? FileManager.default.removeItem(at: moving.folder)
                 context.delete(moving)
+                try? context.save()
+            }
+
+            // S-014: Rosetta needs AM2R.exe and the patch data; the runner's data folder links to the profile's saves.
+            do {
+                let plain = model.addProfile(name: "Plain", version: "1.5.5")
+                let switched = await model.useRosetta(plain)
+                check("Rosetta without AM2R.exe or patch data says why and keeps Native",
+                      !switched && plain.engine == .native && model.engineError?.profile == plain.uuid, model.engineError?.message ?? "no error")
+                model.engineError = nil
+                let base = URL.temporaryDirectory.appending(path: "selftest-runner-\(UUID().uuidString)", directoryHint: .isDirectory)
+                let saves = base.appending(path: "Saves", directoryHint: .isDirectory), runner = base.appending(path: "com.yoyogames.am2r.profile-x", directoryHint: .isDirectory)
+                try? FileManager.default.createDirectory(at: saves, withIntermediateDirectories: true)
+                try? FileManager.default.createDirectory(at: runner, withIntermediateDirectories: true)
+                try? Data("old save".utf8).write(to: runner.appending(path: "save1"))
+                try? Data("ours".utf8).write(to: saves.appending(path: "config.ini"))
+                try? Data("theirs".utf8).write(to: runner.appending(path: "config.ini"))
+                try? GameRunner.linkRunnerData(runner, to: saves)
+                try? GameRunner.linkRunnerData(runner, to: saves)
+                check("the runner's data folder links to the profile's saves",
+                      (try? FileManager.default.destinationOfSymbolicLink(atPath: runner.path)) == saves.path)
+                check("saves the runner made earlier move into the profile, ours win",
+                      (try? String(contentsOf: saves.appending(path: "save1"), encoding: .utf8)) == "old save"
+                      && (try? String(contentsOf: saves.appending(path: "config.ini"), encoding: .utf8)) == "ours")
+                try? FileManager.default.removeItem(at: base)
+                context.delete(plain)
                 try? context.save()
             }
 
@@ -160,6 +188,25 @@ enum SelfTest {
                         for _ in 0..<100 where model.game != nil { try? await Task.sleep(for: .milliseconds(100)) }
                         check("Stop ends the game", model.game == nil)
                         check("stopping isn't reported as a failure", model.lastGameFailure == nil)
+                        // S-014: switch to Rosetta, play on the official runner, stop it.
+                        let switched = await model.useRosetta(installed)
+                        check("Rosetta builds the profile's AM2R.app", switched && installed.engine == .rosetta && RosettaApp.app(in: installed.folder) != nil,
+                              model.engineError?.message ?? "")
+                        let runnerData = GameRunner.runnerDataFolder(bundleID: RosettaApp.bundleIdentifier(for: installed.uuid))
+                        if switched && Rosetta.isInstalled {
+                            model.play()
+                            check("Play starts the Rosetta app", model.game != nil, model.playError ?? "")
+                            try? await Task.sleep(for: .seconds(4))
+                            check("the Rosetta game is running", model.game?.isRunning == true)
+                            check("the runner saves into the profile's save folder",
+                                  (try? FileManager.default.destinationOfSymbolicLink(atPath: runnerData.path)) == GameRunner.saveFolder(for: installed).path)
+                            model.stopGame()
+                            for _ in 0..<100 where model.game != nil { try? await Task.sleep(for: .milliseconds(100)) }
+                            check("Stop ends the Rosetta game", model.game == nil)
+                        }
+                        model.setEngine(.native, for: installed)
+                        check("switching back to Native keeps the Rosetta app for next time", installed.engine == .native && RosettaApp.app(in: installed.folder) != nil)
+                        try? FileManager.default.removeItem(at: runnerData)
                         for _ in 0..<6 { GameRunner.pruneLogs(in: GameRunner.logFolder(for: installed), keep: 4) }
                         let kept = (try? FileManager.default.contentsOfDirectory(atPath: GameRunner.logFolder(for: installed).path))?.count ?? 0
                         check("at most five logs are kept", kept <= 5)

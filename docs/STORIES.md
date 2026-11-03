@@ -5,7 +5,7 @@ pages that show each story. Thimble tasks are named in `Thimble:` and their note
 `Story: S-xxx`.
 
 Snapshot pages: `welcome`, `welcome-checking`, `welcome-error`, `install-progress`, `play`,
-`play-running`, `play-failed`, `log-sheet`, `profiles`, `settings-game`, `settings-controls`,
+`play-running`, `play-no-rosetta`, `play-failed`, `log-sheet`, `profiles`, `settings-game`, `settings-controls`,
 `settings-general`, `update-banner`.
 
 ## M1 Install and play (0.1.0)
@@ -180,14 +180,17 @@ Status: done
 
 ### S-014 Use the Rosetta fallback for one profile
 As the player, if a profile misbehaves on Butterscotch I can switch it to the official runner.
-Screens: profiles
+Screens: play-no-rosetta
 Depends: S-005
 Thimble: 638031a3
 Acceptance:
 - [unit] Engine = rosetta builds `AM2R.app` (runner from `AM2R.xdelta`, `Frameworks`, `Info.plist`)
   and launches it with `open -W`.
 - [snap] The engine picker says when Rosetta isn't installed and offers to install it.
-Status: todo
+UX:
+- Flow: Play page › Engine section (or Game › Engine, ⌥⌘1 Native, ⌥⌘2 Rosetta) -> Rosetta builds `<profile>/AM2R.app` once ("Building the Rosetta app…"), then Play runs it. Saves and config.ini are shared with Native: the runner's Application Support/<bundle id> links to the profile's save folder.
+- States: Rosetta missing: "Rosetta isn't installed on this Mac." with Install Rosetta… (asks first, then softwareupdate with an administrator password); no AM2R.exe: the reason under the picker; build failure: the reason, engine stays Native.
+Status: done
 
 ## M3 Stay current (0.2.0)
 

@@ -42,6 +42,23 @@ struct AM2RLauncherPlusApp: App {
                     .keyboardShortcut(".")
                     .disabled(model.game == nil)
                 Divider()
+                Menu("Engine") {
+                    ForEach(Engine.allCases) { engine in
+                        Toggle(engine.title, isOn: Binding(
+                            get: { model.currentProfile?.engine == engine },
+                            set: { _ in if let profile = model.currentProfile { model.setEngine(engine, for: profile) } }))
+                            .keyboardShortcut(engine == .native ? "1" : "2", modifiers: [.command, .option])
+                            .disabled(model.isPlaying || model.rosettaBuild != nil
+                                      || (engine == .rosetta && !(model.rosettaInstalled && model.source?.hasWindowsGame == true)))
+                    }
+                    if !model.rosettaInstalled {
+                        Divider()
+                        Button("Install Rosetta…") { model.sidebar = .play; model.confirmRosettaInstall = true }
+                            .disabled(model.installingRosetta)
+                    }
+                }
+                .disabled(model.currentProfile == nil)
+                Divider()
                 Button("Show Log") { model.showLog() }
                     .keyboardShortcut("l")
                     .disabled(model.currentLog == nil)

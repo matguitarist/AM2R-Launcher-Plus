@@ -85,6 +85,25 @@ enum Snapshot {
                 }
                 model.previewPlaying = false
             }
+            // S-014: the engine picker when Rosetta isn't installed.
+            if only?.contains("play-no-rosetta") ?? true {
+                model.sidebar = .play
+                let installed = model.rosettaInstalled
+                model.rosettaInstalled = false
+                // Tall enough to show the Engine section under the other settings.
+                let main = NSApp.windows.first { $0.canBecomeMain && !$0.isSheet }
+                let frame = main?.frame
+                if let main, let screen = main.screen?.visibleFrame {
+                    main.setFrame(NSRect(x: main.frame.minX, y: screen.minY, width: main.frame.width, height: screen.height), display: true)
+                }
+                for mode in ["light", "dark"] {
+                    NSApp.appearance = NSAppearance(named: mode == "light" ? .aqua : .darkAqua)
+                    try? await Task.sleep(for: .seconds(0.8))
+                    capture(to: "\(dir)/play-no-rosetta-\(mode).png")
+                }
+                model.rosettaInstalled = installed
+                if let main, let frame { main.setFrame(frame, display: true) }
+            }
             // S-006: play-failed (banner) and log-sheet.
             if let profile = model.currentProfile, only?.contains("play-failed") ?? true || only?.contains("log-sheet") ?? true {
                 let logs = GameRunner.logFolder(for: profile)
