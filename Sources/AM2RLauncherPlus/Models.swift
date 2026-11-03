@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import SwiftData
 import AM2RLauncherPlusKit
@@ -151,6 +152,8 @@ nonisolated enum DataFolder {
     }
 
     static var hashCache: URL { url.appending(path: "Caches/hashes.json") }
+    /// Saves kept when a profile is deleted (S-022).
+    static var keptSaves: URL { url.appending(path: "Kept Saves", directoryHint: .isDirectory) }
     /// The last update check (S-020).
     static var latestUpdate: URL { url.appending(path: "Caches/latest-update.json") }
     static var patchData: URL { url.appending(path: "PatchData", directoryHint: .isDirectory) }
@@ -274,6 +277,13 @@ final class AppModel {
     var checkingForUpdates = false
     /// Only a check the player asked for reports a failure or "up to date".
     var updateCheckMessage: String?
+    /// Profiles page and Profile menu (S-022): the profile being renamed or deleted.
+    var renameTarget: Profile?
+    var deleteTarget: Profile?
+    /// Where the saves of a deleted profile went, shown on the Profiles page.
+    var keptSaves: (name: String, folder: URL)?
+    var duplicating = false
+    var profileActionError: String?
 
     init(container: ModelContainer) {
         self.container = container
@@ -466,6 +476,101 @@ final class AppModel {
         let installed = PatchData.installedManifest(in: DataFolder.patchData.appending(path: profile.patchCommit, directoryHint: .isDirectory))
         guard UpdateCheck.isNewer(latestUpdate.manifest, than: installed, installedCommit: profile.patchCommit) else { return nil }
         return UpdateCheck.title(latestVersion: latestUpdate.version, installedVersion: profile.version)
+    }
+
+    // MARK: Manage profiles (S-022)
+
+    func rename(_ profile: Profile, to name: String) {
+        profile.name = ProfileName.clean(name)
+        try? container.mainContext.save()
+    }
+
+    /// Profile > Duplicate and the Profiles page.
+    func startDuplicate(_ profile: Profile) {
+        Task { _ = await duplicate(profile) }
+    }
+
+    /// Copies the game files and saves into a new profile with the same version, engine and settings.
+    @discardableResult
+    func duplicate(_ profile: Profile) async -> Profile? {
+        guard !duplicating else { return nil }
+        duplicating = true
+        defer { duplicating = false }
+        profileActionError = nil
+        let names = ((try? container.mainContext.fetch(FetchDescriptor<Profile>())) ?? []).map(\.name)
+        let uuid = UUID()
+        let from = (profile.folder, GameRunner.saveFolder(for: profile))
+        let to = (DataFolder.profiles.appending(path: uuid.uuidString, directoryHint: .isDirectory),
+                  DataFolder.url.appending(path: "Saves/\(uuid.uuidString)", directoryHint: .isDirectory))
+        let copied = await Task.detached(priority: .userInitiated) { () -> String? in
+            let fm = FileManager.default
+            do {
+                try fm.createDirectory(at: to.0, withIntermediateDirectories: true)
+                // The Rosetta app is tied to its profile's bundle id; the copy builds its own.
+                for item in try fm.contentsOfDirectory(at: from.0, includingPropertiesForKeys: nil) where !item.lastPathComponent.hasPrefix(RosettaApp.appName) {
+                    try fm.copyItem(at: item, to: to.0.appending(path: item.lastPathComponent))
+                }
+                if fm.fileExists(atPath: from.1.path) {
+                    try fm.createDirectory(at: to.1.deletingLastPathComponent(), withIntermediateDirectories: true)
+                    try fm.copyItem(at: from.1, to: to.1)
+                }
+                return nil
+            } catch {
+                try? fm.removeItem(at: to.0)
+                try? fm.removeItem(at: to.1)
+                return error.localizedDescription
+            }
+        }.value
+        if let copied {
+            profileActionError = "Unable to duplicate \(profile.name): \(copied)"
+            return nil
+        }
+        let copy = Profile(name: ProfileName.copy(of: profile.name, existing: names), version: profile.version)
+        copy.uuid = uuid
+        copy.patchCommit = profile.patchCommit
+        copy.controllerLayoutSet = profile.controllerLayoutSet
+        copy.displayFilter = profile.displayFilter
+        container.mainContext.insert(copy)
+        try? container.mainContext.save()
+        selection = copy.id
+        if profile.engine == .rosetta { await useRosetta(copy) }
+        return copy
+    }
+
+    func reveal(_ profile: Profile) {
+        NSWorkspace.shared.activateFileViewerSelecting([profile.folder])
+    }
+
+    /// Deletes the game files, logs and the profile. `keepSaves` moves the save folder (and config.ini)
+    /// to <data folder>/Kept Saves/<name – date> instead of deleting it.
+    func delete(_ profile: Profile, keepSaves: Bool) {
+        guard game?.profileID != profile.uuid else { return }
+        let fm = FileManager.default
+        profileActionError = nil
+        let saves = GameRunner.saveFolder(for: profile)
+        if keepSaves, fm.fileExists(atPath: saves.path) {
+            let kept = DataFolder.keptSaves.appending(path: ProfileName.keptSavesFolder(for: profile.name, date: .now), directoryHint: .isDirectory)
+            do {
+                try fm.createDirectory(at: DataFolder.keptSaves, withIntermediateDirectories: true)
+                if fm.fileExists(atPath: kept.path) { try fm.removeItem(at: kept) }
+                try fm.moveItem(at: saves, to: kept)
+                keptSaves = (profile.name, kept)
+            } catch {
+                profileActionError = "Unable to keep the saves of \(profile.name): \(error.localizedDescription). Nothing was deleted."
+                return
+            }
+        } else {
+            try? fm.removeItem(at: saves)
+        }
+        try? fm.removeItem(at: profile.folder)
+        try? fm.removeItem(at: GameRunner.logFolder(for: profile))
+        // The official runner's link to the saves (S-014).
+        try? fm.removeItem(at: GameRunner.runnerDataFolder(bundleID: RosettaApp.bundleIdentifier(for: profile.uuid)))
+        if lastGameFailure?.profile == profile.uuid { lastGameFailure = nil }
+        let wasSelected = selection == profile.id
+        container.mainContext.delete(profile)
+        try? container.mainContext.save()
+        if wasSelected { selection = currentProfile?.id }
     }
 
     /// Game > Engine and the engine picker (S-014). Rosetta builds the profile's AM2R.app first, once.

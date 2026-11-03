@@ -107,6 +107,41 @@ enum SelfTest {
                 try? context.save()
             }
 
+            // S-022: rename, duplicate, delete with or without the saves.
+            do {
+                let fm = FileManager.default
+                let original = model.addProfile(name: "Managed", version: "1.5.5")
+                try? fm.createDirectory(at: original.folder, withIntermediateDirectories: true)
+                try? Data("game".utf8).write(to: original.folder.appending(path: "game.ios"))
+                let saves = GameRunner.saveFolder(for: original)
+                try? fm.createDirectory(at: saves, withIntermediateDirectories: true)
+                try? Data("[Screen]\n".utf8).write(to: GameSettings.configFile(in: saves))
+                try? Data("save".utf8).write(to: saves.appending(path: "save1"))
+                model.rename(original, to: "  My   Run ")
+                check("rename cleans and keeps the name", original.name == "My Run")
+                let copy = await model.duplicate(original)
+                check("duplicate adds a selected copy", copy != nil && copy?.name == "My Run Copy" && model.selection == copy?.id)
+                if let copy {
+                    check("the copy has the game files and saves", fm.fileExists(atPath: copy.folder.appending(path: "game.ios").path)
+                          && fm.fileExists(atPath: GameRunner.saveFolder(for: copy).appending(path: "save1").path))
+                    model.deleteTarget = copy
+                    check("Delete asks first", fm.fileExists(atPath: copy.folder.path) && profiles().contains { $0.uuid == copy.uuid })
+                    model.deleteTarget = nil
+                    let copySaves = GameRunner.saveFolder(for: copy), copyFolder = copy.folder
+                    model.delete(copy, keepSaves: false)
+                    check("Delete without saves removes files and saves", !fm.fileExists(atPath: copyFolder.path) && !fm.fileExists(atPath: copySaves.path))
+                }
+                let folder = original.folder, id = original.uuid
+                model.delete(original, keepSaves: true)
+                let kept = model.keptSaves?.folder
+                check("Delete, Keep Saves moves the saves to Kept Saves",
+                      kept.map { fm.fileExists(atPath: $0.appending(path: "save1").path) && fm.fileExists(atPath: $0.appending(path: "config.ini").path) } == true
+                      && kept?.deletingLastPathComponent().lastPathComponent == "Kept Saves", kept?.path ?? "none")
+                check("the deleted profile and its files are gone", !fm.fileExists(atPath: folder.path) && !profiles().contains { $0.uuid == id })
+                if let kept { try? fm.removeItem(at: kept) }
+                model.keptSaves = nil
+            }
+
             // S-020: the banner shows only for a profile built from older patch data.
             do {
                 let old = model.addProfile(name: "Old", version: "1.5.5")

@@ -34,6 +34,23 @@ struct AM2RLauncherPlusApp: App {
                 Button("Choose AM2R 1.1…") { model.showChooser = true }
                     .keyboardShortcut("o")
             }
+            CommandMenu("Profile") {
+                let profile = model.currentProfile
+                let off = profile == nil || model.renameTarget != nil || model.install != nil
+                Button("Rename…") { model.renameTarget = profile }
+                    .keyboardShortcut("r")
+                    .disabled(off)
+                Button("Duplicate") { if let profile { model.startDuplicate(profile) } }
+                    .keyboardShortcut("d")
+                    .disabled(off || model.duplicating)
+                Button("Show in Finder") { if let profile { model.reveal(profile) } }
+                    .keyboardShortcut("r", modifiers: [.command, .option])
+                    .disabled(off)
+                Divider()
+                Button("Delete…") { model.deleteTarget = profile }
+                    .keyboardShortcut(.delete)
+                    .disabled(off || (model.game != nil && model.game?.profileID == profile?.uuid))
+            }
             CommandMenu("Game") {
                 Button("Play") { model.play() }
                     .keyboardShortcut("p")

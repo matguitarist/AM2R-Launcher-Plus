@@ -5,7 +5,7 @@ pages that show each story. Thimble tasks are named in `Thimble:` and their note
 `Story: S-xxx`.
 
 Snapshot pages: `welcome`, `welcome-checking`, `welcome-error`, `install-progress`, `play`,
-`play-running`, `play-no-rosetta`, `play-failed`, `log-sheet`, `profiles`, `settings-game`, `settings-controls`,
+`play-running`, `play-no-rosetta`, `play-failed`, `log-sheet`, `profiles`, `profiles-delete`, `settings-game`, `settings-controls`,
 `settings-general`, `update-banner`.
 
 ## M1 Install and play (0.1.0)
@@ -222,7 +222,7 @@ Thimble: f699c368
 Acceptance:
 - [snap] Profiles lists name, version, engine, last played, play time.
 - [self] Delete asks for confirmation and offers to keep the saves.
-Status: todo
+Status: done
 
 ### S-023 Back up and restore saves
 As the player, I back up a profile's saves and restore one later.

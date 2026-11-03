@@ -18,6 +18,7 @@ enum SeedData {
         older.engine = .rosetta
         older.installedAt = Date.now.addingTimeInterval(-90 * 86_400)
         older.playTime = 11 * 3_600
+        older.lastPlayedAt = Date.now.addingTimeInterval(-30 * 86_400)
         context.insert(older)
         let current = Profile(name: "Community Updates 1.5.5", version: "1.5.5")
         current.lastPlayedAt = Date.now.addingTimeInterval(-3_600)

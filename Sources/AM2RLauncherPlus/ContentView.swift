@@ -14,6 +14,7 @@ struct ContentView: View {
             case .profiles: ProfilesPage()
             }
         }
+        .modifier(ProfileDialogs())
         .task {
             SeedData.insertIfRequested(into: model)
             SelfTest.runIfRequested(model: model)
@@ -187,6 +188,16 @@ extension PlayPage {
 
 /// "Last played 1 hour ago · 2 h 14 min total"
 enum PlayStats {
+    /// "1 hour ago", "Never"
+    static func lastPlayed(_ date: Date?) -> String {
+        date.map { $0.formatted(.relative(presentation: .named).locale(.app)) } ?? "Never"
+    }
+
+    /// "2 hr, 14 min", "—" before the first game
+    static func playTime(_ seconds: Double) -> String {
+        seconds < 60 ? "—" : Duration.seconds(seconds).formatted(.units(allowed: [.hours, .minutes], width: .abbreviated).locale(.app))
+    }
+
     static func summary(lastPlayed: Date?, playTime: Double) -> String? {
         guard let lastPlayed else { return nil }
         let ago = lastPlayed.formatted(.relative(presentation: .named).locale(.app))
@@ -195,20 +206,30 @@ enum PlayStats {
     }
 }
 
+/// Every profile with its version, engine and play stats; rename, duplicate, reveal and delete (S-022).
 struct ProfilesPage: View {
     @Environment(AppModel.self) private var model
     @Query(sort: \Profile.installedAt, order: .reverse) private var profiles: [Profile]
 
     var body: some View {
         @Bindable var model = model
-        List(profiles, selection: $model.selection) { profile in
-            VStack(alignment: .leading, spacing: Space.xs) {
-                Text(profile.name)
-                Text("\(profile.version) · \(profile.engine.title)")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
+        Table(profiles, selection: $model.selection) {
+            TableColumn("Name", value: \.name)
+            TableColumn("Version", value: \.version)
+                .width(min: 56, ideal: 64)
+            TableColumn("Engine") { Text($0.engine.title).help($0.engine.help) }
+                .width(min: 56, ideal: 72)
+            TableColumn("Last Played") { Text(PlayStats.lastPlayed($0.lastPlayedAt)) }
+                .width(min: 88, ideal: 120)
+            TableColumn("Play Time") { Text(PlayStats.playTime($0.playTime)) }
+                .width(min: 72, ideal: 96)
+        }
+        .contextMenu(forSelectionType: PersistentIdentifier.self) { ids in
+            if let profile = profiles.first(where: { ids.contains($0.id) }) {
+                ProfileActions(profile: profile)
             }
-            .tag(profile.id)
+        } primaryAction: { ids in
+            if let id = ids.first { model.selection = id; model.sidebar = .play }
         }
         .overlay {
             if profiles.isEmpty {
@@ -216,7 +237,77 @@ struct ProfilesPage: View {
                                        description: Text("Install Community Updates from the Play page."))
             }
         }
+        .safeAreaInset(edge: .bottom, spacing: 0) { notices }
         .navigationTitle("Profiles")
+    }
+
+    /// Where kept saves went, and errors, under the table.
+    @ViewBuilder private var notices: some View {
+        if let kept = model.keptSaves {
+            HStack(spacing: Space.md) {
+                Label("The saves of \(kept.name) are in Kept Saves.", systemImage: "tray.full")
+                Spacer(minLength: Space.lg)
+                Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([kept.folder]) }
+                Button("Done") { model.keptSaves = nil }
+            }
+            .padding(.horizontal, Space.lg)
+            .padding(.vertical, Space.md)
+            .background(.bar)
+        } else if let error = model.profileActionError {
+            HStack(spacing: Space.md) {
+                Label(error, systemImage: "exclamationmark.triangle.fill")
+                    .symbolRenderingMode(.multicolor)
+                Spacer(minLength: Space.lg)
+                Button("Done") { model.profileActionError = nil }
+            }
+            .padding(.horizontal, Space.lg)
+            .padding(.vertical, Space.md)
+            .background(.bar)
+        }
+    }
+}
+
+/// The Profile menu and the Profiles page's context menu share these.
+struct ProfileActions: View {
+    @Environment(AppModel.self) private var model
+    let profile: Profile
+
+    var body: some View {
+        let busy = model.isPlaying && model.game?.profileID == profile.uuid
+        Button("Rename…") { model.renameTarget = profile }
+        Button("Duplicate") { model.startDuplicate(profile) }
+            .disabled(model.duplicating)
+        Button("Show in Finder") { model.reveal(profile) }
+        Divider()
+        Button("Delete…", role: .destructive) { model.deleteTarget = profile }
+            .disabled(busy)
+    }
+}
+
+/// Rename and delete ask here, so the menu bar and the Profiles page share them (S-022).
+struct ProfileDialogs: ViewModifier {
+    @Environment(AppModel.self) private var model
+    @State private var newName = ""
+
+    func body(content: Content) -> some View {
+        @Bindable var model = model
+        content
+            .alert("Rename Profile", isPresented: Binding(get: { model.renameTarget != nil }, set: { if !$0 { model.renameTarget = nil } })) {
+                TextField("Name", text: $newName)
+                Button("Rename") { if let profile = model.renameTarget { model.rename(profile, to: newName) } }
+                    .keyboardShortcut(.defaultAction)
+                Button("Cancel", role: .cancel) {}
+            }
+            .onChange(of: model.renameTarget?.uuid) { newName = model.renameTarget?.name ?? "" }
+            .confirmationDialog(model.deleteTarget.map { "Delete \($0.name)?" } ?? "",
+                                isPresented: Binding(get: { model.deleteTarget != nil }, set: { if !$0 { model.deleteTarget = nil } })) {
+                Button("Delete, Keep Saves") { if let profile = model.deleteTarget { model.delete(profile, keepSaves: true) } }
+                    .keyboardShortcut(.defaultAction)
+                Button("Delete Profile and Saves", role: .destructive) { if let profile = model.deleteTarget { model.delete(profile, keepSaves: false) } }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("The game files are removed. Kept saves go to Kept Saves in the data folder, so you can restore them later.")
+            }
     }
 }
 

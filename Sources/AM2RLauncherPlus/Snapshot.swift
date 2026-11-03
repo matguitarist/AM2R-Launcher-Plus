@@ -85,6 +85,19 @@ enum Snapshot {
                 }
                 model.previewPlaying = false
             }
+            // S-022: the delete dialog on the Profiles page.
+            if let profile = model.currentProfile, only?.contains("profiles-delete") ?? true {
+                model.sidebar = .profiles
+                for mode in ["light", "dark"] {
+                    NSApp.appearance = NSAppearance(named: mode == "light" ? .aqua : .darkAqua)
+                    model.deleteTarget = profile
+                    try? await Task.sleep(for: .seconds(1))
+                    let main = NSApp.windows.first { $0.canBecomeMain && !$0.isSheet }
+                    capture(to: "\(dir)/profiles-delete-\(mode).png", window: main, withSheet: true)
+                    model.deleteTarget = nil
+                    try? await Task.sleep(for: .seconds(0.5))
+                }
+            }
             // S-020: update-banner, a newer release than the seeded profile.
             if only?.contains("update-banner") ?? true {
                 model.sidebar = .play
@@ -177,7 +190,8 @@ enum Snapshot {
     /// permission for the app that started this one (your terminal, or Claude).
     /// Without it, falls back to drawing the view hierarchy, which leaves
     /// sidebars and glass blank.
-    private static func capture(to path: String, window: NSWindow? = nil) {
+    /// `withSheet` captures the window's area of the screen, so an alert sheet on it shows too.
+    private static func capture(to path: String, window: NSWindow? = nil, withSheet: Bool = false) {
         // Another app can hide this one while snapshots run (computer use hides
         // apps it does not control). Hidden windows cannot be captured.
         if NSApp.isHidden { NSApp.unhideWithoutActivation() }
@@ -195,7 +209,12 @@ enum Snapshot {
         for _ in 1...3 {
             let shot = Process()
             shot.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
-            shot.arguments = ["-x", "-o", "-l", String(window.windowNumber), path]
+            if withSheet, let screen = NSScreen.screens.first {
+                let f = window.frame
+                shot.arguments = ["-x", "-R", "\(Int(f.minX)),\(Int(screen.frame.maxY - f.maxY)),\(Int(f.width)),\(Int(f.height))", path]
+            } else {
+                shot.arguments = ["-x", "-o", "-l", String(window.windowNumber), path]
+            }
             try? shot.run()
             shot.waitUntilExit()
             if FileManager.default.fileExists(atPath: path) {
