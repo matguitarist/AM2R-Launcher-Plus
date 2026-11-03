@@ -66,7 +66,8 @@ public struct IniFile: Equatable, Sendable {
 /// Gamepad layouts for AM2R's Xbox-style joypad settings (S-011).
 /// GameMaker constants: gp_select = 32777, gp_start = 32778, gp_stickr = 32780.
 public enum ControllerLayout: String, CaseIterable, Codable, Sendable {
-    /// Select opens the map, Start opens the pause menu.
+    /// Select opens the map, Start opens the pause menu. The game has no controller binding for its
+    /// pause menu (only Escape opens it), so the engine also presses Escape for Start: `engineKeys`.
     case mac
     /// The game's own default: Start opens the map, right-stick click opens the pause menu.
     case original
@@ -76,11 +77,15 @@ public enum ControllerLayout: String, CaseIterable, Codable, Sendable {
     /// The [Control] keys this layout writes; empty for custom.
     public var keys: [String: String] {
         switch self {
-        case .mac: ["XBJoypadButtonStart": "32777", "XBJoypadButtonExit": "32778"]
+        // Exit quits the game when EnableExitButton is on; it keeps the game's default, away from Start.
+        case .mac: ["XBJoypadButtonStart": "32777", "XBJoypadButtonExit": "32780"]
         case .original: ["XBJoypadButtonStart": "32778", "XBJoypadButtonExit": "32780"]
         case .custom: [:]
         }
     }
+
+    /// BUTTERSCOTCH_GAMEPAD_KEYS for the engine (patch 0006): gp_start also presses Escape (key 27).
+    public var engineKeys: String? { self == .mac ? "32778=27" : nil }
 
     public func apply(to ini: inout IniFile) {
         for (key, value) in keys.sorted(by: { $0.key < $1.key }) { ini.set(key, to: value, in: "Control") }
@@ -98,11 +103,12 @@ public enum ControllerLayout: String, CaseIterable, Codable, Sendable {
 }
 
 extension ControllerLayout {
-    /// The layout config.ini already has: mac or original when both keys match, else custom.
+    /// The layout config.ini already has. Mac is told by the map button alone, so a profile from an
+    /// earlier launcher build (Exit on Start) still counts; Original needs both keys; else custom.
     public static func detect(in ini: IniFile) -> ControllerLayout {
-        for layout in [ControllerLayout.mac, .original] {
-            if layout.keys.allSatisfy({ ini.value($0.key, in: "Control").flatMap(Double.init) == Double($0.value) }) { return layout }
-        }
+        func value(_ key: String) -> Double? { ini.value(key, in: "Control").flatMap(Double.init) }
+        if value("XBJoypadButtonStart") == 32777 { return .mac }
+        if ControllerLayout.original.keys.allSatisfy({ value($0.key) == Double($0.value) }) { return .original }
         return .custom
     }
 }

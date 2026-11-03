@@ -49,7 +49,8 @@ struct GameConfigTests {
         try ControllerLayout.mac.apply(toConfigIn: folder)
         var ini = IniFile(text: try String(contentsOf: folder.appending(path: "config.ini"), encoding: .utf8))
         #expect(ini.value("XBJoypadButtonStart", in: "Control") == "32777")
-        #expect(ini.value("XBJoypadButtonExit", in: "Control") == "32778")
+        #expect(ini.value("XBJoypadButtonExit", in: "Control") == "32780")
+        #expect(ControllerLayout.mac.engineKeys == "32778=27" && ControllerLayout.original.engineKeys == nil)
         // Back to the game's layout, then custom leaves the file alone.
         ControllerLayout.original.apply(to: &ini)
         #expect(ini.value("XBJoypadButtonStart", in: "Control") == "32778")
@@ -89,13 +90,15 @@ struct GameSettingsTests {
         settings.controller = .mac
         try settings.write(to: saves)
         let written = try String(contentsOf: GameSettings.configFile(in: saves), encoding: .utf8)
-        #expect(written == "[Screen]\nFullscreen=\"0\"\nScale=\"1\"\nVSync=\"0\"\nLanguage=\"2\"\nWidescreen=\"1\"\n\n[Control]\nXBJoypadButtonStart=\"32777\"\nXBJoypadButtonExit=\"32778\"\nAimStyle=\"1\"\n")
+        #expect(written == "[Screen]\nFullscreen=\"0\"\nScale=\"1\"\nVSync=\"0\"\nLanguage=\"2\"\nWidescreen=\"1\"\n\n[Control]\nXBJoypadButtonStart=\"32777\"\nXBJoypadButtonExit=\"32780\"\nAimStyle=\"1\"\n")
         #expect(GameSettings.read(from: saves).controller == .mac)
     }
 
     @Test func rebindsMadeInTheGameAreCustom() {
         let ini = IniFile(text: "[Control]\nXBJoypadButtonStart=\"32772\"\nXBJoypadButtonExit=\"32778\"\n")
         #expect(ControllerLayout.detect(in: ini) == .custom)
+        // Written by the first build of the Mac layout, which put Exit on Start.
+        #expect(ControllerLayout.detect(in: IniFile(text: "[Control]\nXBJoypadButtonStart=\"32777\"\nXBJoypadButtonExit=\"32778\"\n")) == .mac)
         // The game writes reals; "32777.000000" still counts.
         #expect(ControllerLayout.detect(in: IniFile(text: "[Control]\nXBJoypadButtonStart=\"32777.000000\"\nXBJoypadButtonExit=\"32778\"\n")) == .mac)
     }

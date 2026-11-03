@@ -303,8 +303,12 @@ final class AppModel {
         playError = nil
         lastGameFailure = nil
         applyFirstSettings(to: profile)
+        let settings = GameSettings.read(from: GameRunner.saveFolder(for: profile))
+        // Keeps the layout's keys current, e.g. a profile set up by an earlier build of the Mac layout.
+        if settings.controller == .mac { try? settings.write(to: GameRunner.saveFolder(for: profile)) }
         do {
-            game = try GameRunner(profile: profile, extraArguments: extraArguments) { [weak self] status in
+            game = try GameRunner(profile: profile, extraArguments: extraArguments,
+                                  gamepadKeys: settings.controller.engineKeys) { [weak self] status in
                 self?.gameEnded(status: status)
             }
         } catch {

@@ -38,7 +38,8 @@ final class GameRunner {
     }
 
     /// Launches the game. `extraArguments` lets the self-test run the engine headless.
-    init(profile: Profile, extraArguments: [String] = [], onExit: @escaping @MainActor (Int32) -> Void) throws(StartError) {
+    /// `gamepadKeys` is BUTTERSCOTCH_GAMEPAD_KEYS, controller buttons that also press keys (S-011).
+    init(profile: Profile, extraArguments: [String] = [], gamepadKeys: String? = nil, onExit: @escaping @MainActor (Int32) -> Void) throws(StartError) {
         guard let engine = Self.engine else { throw .engineMissing }
         let game = profile.folder.appending(path: "game.ios")
         guard FileManager.default.fileExists(atPath: game.path) else { throw .gameMissing }
@@ -57,6 +58,9 @@ final class GameRunner {
         process.executableURL = engine
         process.currentDirectoryURL = profile.folder
         process.arguments = extraArguments + ["--save-folder", saves.path, game.path]
+        var environment = ProcessInfo.processInfo.environment
+        environment["BUTTERSCOTCH_GAMEPAD_KEYS"] = gamepadKeys
+        process.environment = environment
         if let handle = try? FileHandle(forWritingTo: log) {
             process.standardOutput = handle
             process.standardError = handle

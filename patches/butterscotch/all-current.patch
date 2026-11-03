@@ -1,8 +1,56 @@
 diff --git a/src/backends/appkit.m b/src/backends/appkit.m
-index 9623eb1..89b975e 100644
+index 9623eb1..7ca1beb 100644
 --- a/src/backends/appkit.m
 +++ b/src/backends/appkit.m
-@@ -88,6 +88,14 @@ static void appkitMapControllerToSlot(GCController *controller, GamepadSlot *slo
+@@ -19,6 +19,47 @@
+ 
+ #define USE_PRIVATE_API 0
+ 
++// Controller buttons that also act as keyboard keys, for games with no gamepad binding for an action
++// (AM2R opens its pause menu only from Escape). BUTTERSCOTCH_GAMEPAD_KEYS="32778=27,..." maps a
++// gp_* constant to a GML key code, for every controller.
++#define MAX_GAMEPAD_KEYS 8
++static int gamepadKeyCount = -1;
++static int gamepadKeyButton[MAX_GAMEPAD_KEYS];
++static int gamepadKeyCode[MAX_GAMEPAD_KEYS];
++static bool gamepadKeyDown[MAX_GAMEPAD_KEYS];
++
++static void appkitLoadGamepadKeys(void) {
++    gamepadKeyCount = 0;
++    const char *spec = getenv("BUTTERSCOTCH_GAMEPAD_KEYS");
++    while (spec && *spec && gamepadKeyCount < MAX_GAMEPAD_KEYS) {
++        int button = 0, key = 0, used = 0;
++        if (sscanf(spec, "%d=%d%n", &button, &key, &used) != 2) break;
++        int index = button >= 32769 ? button - 32769 : button;
++        if (index >= 0 && index < GP_BUTTON_COUNT && key > 0 && key < 256) {
++            gamepadKeyButton[gamepadKeyCount] = index;
++            gamepadKeyCode[gamepadKeyCount] = key;
++            gamepadKeyDown[gamepadKeyCount] = false;
++            gamepadKeyCount++;
++        }
++        spec += used;
++        if (*spec == ',') spec++;
++    }
++}
++
++static void appkitUpdateGamepadKeys(void) {
++    if (gamepadKeyCount < 0) appkitLoadGamepadKeys();
++    for (int i = 0; i < gamepadKeyCount; i++) {
++        bool down = false;
++        for (int slotIdx = 0; slotIdx < MAX_GAMEPADS; slotIdx++) {
++            GamepadSlot *slot = g_runner->gamepads->slots + slotIdx;
++            if (slot->connected && slot->buttonDown[gamepadKeyButton[i]]) down = true;
++        }
++        if (down && !gamepadKeyDown[i]) RunnerKeyboard_onKeyDown(g_runner->keyboard, gamepadKeyCode[i]);
++        if (!down && gamepadKeyDown[i]) RunnerKeyboard_onKeyUp(g_runner->keyboard, gamepadKeyCode[i]);
++        gamepadKeyDown[i] = down;
++    }
++}
++
+ enum {
+     IDX_LT = 6,
+     IDX_RT = 7,
+@@ -88,6 +129,14 @@ static void appkitMapControllerToSlot(GCController *controller, GamepadSlot *slo
          slot->axisValue[2] = extended.rightThumbstick.xAxis.value;
          slot->axisValue[3] = -extended.rightThumbstick.yAxis.value;
  
@@ -17,7 +65,7 @@ index 9623eb1..89b975e 100644
          if (extended.leftThumbstickButton) {
              slot->buttonDown[10] = extended.leftThumbstickButton.pressed;
              slot->buttonValue[10] = extended.leftThumbstickButton.value;
-@@ -425,6 +433,25 @@ static bool platformGetWindowFullscreen(void) {
+@@ -425,6 +474,25 @@ static bool platformGetWindowFullscreen(void) {
      return ([window styleMask] & NSWindowStyleMaskFullScreen) != 0;
  }
  
@@ -43,13 +91,21 @@ index 9623eb1..89b975e 100644
  static void platformSetWindowFullscreen(bool fullscreen) {
      if (fullscreen == platformGetWindowFullscreen()) return;
      [window toggleFullScreen:nil];
-@@ -780,6 +807,7 @@ void platformInitFunctions(Runner *runner) {
+@@ -780,6 +848,7 @@ void platformInitFunctions(Runner *runner) {
      runner->setWindowPosition = platformSetWindowPosition;
      runner->getWindowFullscreen = platformGetWindowFullscreen;
      runner->setWindowFullscreen = platformSetWindowFullscreen;
 +    runner->getDisplaySize = platformGetDisplaySize;
      runner->currentCursor = GML_CR_ARROW;
  }
+ 
+@@ -828,6 +897,7 @@ bool platformHandleEvents(void)
+                     g_runner->gamepads->connectedCount++;
+                 }
+             }
++            if (g_runner->keyboard) appkitUpdateGamepadKeys();
+         }
+     }
  
 diff --git a/src/gl/gl_renderer.c b/src/gl/gl_renderer.c
 index 5c514eb..bb9214b 100644
