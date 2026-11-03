@@ -74,8 +74,18 @@ enum Snapshot {
             var modFailed = InstallState()
             modFailed.modZip = URL(fileURLWithPath: "/tmp/Fast Mod.zip")
             modFailed.failure = ModPackage.Failure.yyc(name: "Fast Mod").message
+            // S-036: a Randovania export being imported, and a folder with no seed.
+            var importing = InstallState()
+            importing.importFolder = URL(fileURLWithPath: "/tmp/My Seed")
+            importing.modName = "Randovania Chozo Baby Spider"
+            importing.step = .copy
+            var importFailed = InstallState()
+            importFailed.importFolder = URL(fileURLWithPath: "/tmp/Downloads")
+            importFailed.step = .copy
+            importFailed.failure = RandovaniaGame.Failure.notAnExport.message
             for (name, state) in [("install-progress", downloading), ("install-error", failed),
-                                  ("install-mod", modding), ("install-mod-error", modFailed)] where only?.contains(name) ?? true {
+                                  ("install-mod", modding), ("install-mod-error", modFailed),
+                                  ("install-randovania", importing), ("install-randovania-error", importFailed)] where only?.contains(name) ?? true {
                 model.sidebar = .play
                 model.install = state
                 for mode in ["light", "dark"] {

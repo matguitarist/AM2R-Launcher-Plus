@@ -359,6 +359,27 @@ enum SelfTest {
                               model.install?.failure ?? "no failure")
                         check("a refused mod adds no profile", profiles().count == before)
                         model.cancelInstall()
+
+                        // S-036: the folder Randovania asks for, and its export imported back as a profile.
+                        let rdv = FileManager.default.temporaryDirectory.appending(path: "rdv-selftest-\(UUID().uuidString)", directoryHint: .isDirectory)
+                        let rdvApp = try? RandovaniaGame.prepare(profile: installed.folder, into: rdv)
+                        check("Randovania's input folder has AM2R.app with game.ios and Mac_Runner",
+                              rdvApp.map { FileManager.default.fileExists(atPath: $0.appending(path: "Contents/Resources/game.ios").path)
+                                  && FileManager.default.isExecutableFile(atPath: $0.appending(path: "Contents/MacOS/Mac_Runner").path) } == true)
+                        model.importRandovania(folder: rdv)
+                        for _ in 0..<600 where model.install?.finishedName == nil && model.install?.failure == nil { try? await Task.sleep(for: .milliseconds(100)) }
+                        let seed = profiles().first { $0.name == "Randovania \(rdv.lastPathComponent)" }
+                        check("an exported seed imports as its own profile", seed?.isMod == true && seed?.author == "Randovania", model.install?.failure ?? "none")
+                        for _ in 0..<50 where model.install != nil { try? await Task.sleep(for: .milliseconds(100)) }
+                        model.importRandovania(folder: FileManager.default.temporaryDirectory)
+                        check("a folder without a seed is refused with a reason", model.install?.failure == RandovaniaGame.Failure.notAnExport.message)
+                        model.install = nil
+                        if let seed {
+                            try? FileManager.default.removeItem(at: seed.folder)
+                            context.delete(seed)
+                            try? context.save()
+                        }
+                        try? FileManager.default.removeItem(at: rdv)
                         // Only this profile's folders: Logs/ also holds launcher.log.
                         try? FileManager.default.removeItem(at: GameRunner.saveFolder(for: installed))
                         try? FileManager.default.removeItem(at: GameRunner.logFolder(for: installed))

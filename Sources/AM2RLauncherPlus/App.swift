@@ -50,6 +50,14 @@ struct AM2RLauncherPlusApp: App {
                     .keyboardShortcut("o", modifiers: [.command, .option])
                     .disabled(model.source == nil || model.install != nil || model.isPlaying)
                     .help(model.source == nil ? "Install AM2R first" : "Install an AM2R mod zip as its own profile")
+                Button("Prepare for Randovania…") { model.prepareForRandovania() }
+                    .keyboardShortcut("o", modifiers: [.command, .option, .shift])
+                    .disabled(model.randovaniaBase == nil || model.install != nil)
+                    .help("Make the AM2R folder Randovania asks for, from your Community Updates profile")
+                Button("Import Randovania Game…") { model.chooseRandovaniaGame() }
+                    .keyboardShortcut("o", modifiers: [.command, .shift])
+                    .disabled(model.install != nil || model.isPlaying)
+                    .help("Add a seed that Randovania exported as its own profile")
                 Divider()
                 let profile = model.currentProfile
                 let off = profile == nil || model.renameTarget != nil || model.install != nil || model.backupsFor != nil

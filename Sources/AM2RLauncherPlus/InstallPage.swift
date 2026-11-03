@@ -11,7 +11,7 @@ struct InstallPage: View {
                 .font(.largeTitle.bold())
                 .accessibilityAddTraits(.isHeader)
             VStack(alignment: .leading, spacing: Space.lg) {
-                ForEach(InstallState.Step.allCases, id: \.self) { step in
+                ForEach(state.steps, id: \.self) { step in
                     row(step)
                 }
             }
@@ -69,7 +69,9 @@ struct InstallPage: View {
             HStack(spacing: Space.md) {
                 Button("Cancel") { model.cancelInstall() }
                     .keyboardShortcut(.cancelAction)
-                if state.modZip != nil {
+                if state.importFolder != nil {
+                    Button("Choose Another Folder…") { model.install = nil; model.chooseRandovaniaGame() }
+                } else if state.modZip != nil {
                     Button("Choose Another Mod…") { model.install = nil; model.showModChooser = true }
                         .buttonStyle(.borderedProminent)
                         .keyboardShortcut(.defaultAction)

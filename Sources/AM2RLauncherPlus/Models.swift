@@ -214,11 +214,16 @@ struct InstallState: Equatable {
     /// Installing this mod zip (S-033) instead of Community Updates.
     var modZip: URL?
     var modName: String?
+    /// Importing this Randovania export (S-036): only the copy step.
+    var importFolder: URL?
+
+    var steps: [Step] { importFolder != nil ? [.copy] : Step.allCases }
 
     var title: String {
         if let finishedName { return "\(finishedName) is ready" }
         if let updatingName { return "Updating \(updatingName)" }
-        if let modName { return "Installing \(modName)" }
+        if let modName { return importFolder != nil ? "Importing \(modName)" : "Installing \(modName)" }
+        if importFolder != nil { return "Importing a Randovania Game" }
         if let modZip { return "Installing \(modZip.deletingPathExtension().lastPathComponent)" }
         return "Installing Community Updates"
     }
@@ -495,6 +500,100 @@ final class AppModel {
                 log(.error, "Install", "\(error)")
                 install?.failure = "Unable to install: \(error.localizedDescription)"
             }
+        }
+    }
+
+    /// The Community Updates profile Randovania starts from: the selected one, else the newest.
+    var randovaniaBase: Profile? {
+        if let current = currentProfile, !current.isMod { return current }
+        let all = (try? container.mainContext.fetch(FetchDescriptor<Profile>(sortBy: [SortDescriptor(\.installedAt, order: .reverse)]))) ?? []
+        return all.first { !$0.isMod && FileManager.default.fileExists(atPath: $0.folder.appending(path: "game.ios").path) }
+    }
+
+    /// Asks where to write Randovania's input folder, writes it, and shows it in Finder (S-036).
+    func prepareForRandovania() {
+        guard let base = randovaniaBase else { return }
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.prompt = "Prepare Here"
+        panel.message = "Choose where to put the folder Randovania uses as its input"
+        guard panel.runModal() == .OK, let parent = panel.url else { return }
+        let folder = parent.appending(path: "AM2R for Randovania", directoryHint: .isDirectory)
+        let source = base.folder, name = base.name
+        Task {
+            do {
+                let app = try await Task.detached(priority: .userInitiated) {
+                    try RandovaniaGame.prepare(profile: source, into: folder)
+                }.value
+                log(.info, "Randovania", "Prepared \(folder.path) from \(name)")
+                NSWorkspace.shared.activateFileViewerSelecting([app])
+            } catch {
+                let message = (error as? RandovaniaGame.Failure)?.message ?? "Unable to prepare the folder: \(error.localizedDescription)"
+                log(.error, "Randovania", message)
+                playError = message
+            }
+        }
+    }
+
+    /// Asks for a folder Randovania exported and imports it.
+    func chooseRandovaniaGame() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.treatsFilePackagesAsDirectories = false
+        panel.prompt = "Import"
+        panel.message = "Choose the folder Randovania exported the seed to"
+        guard panel.runModal() == .OK, let folder = panel.url else { return }
+        importRandovania(folder: folder)
+    }
+
+    /// Copies a Randovania export into a new profile, played like a mod: native engine, no updates.
+    func importRandovania(folder: URL) {
+        guard installTask == nil, game == nil else { return }
+        var state = InstallState()
+        state.importFolder = folder
+        state.step = .copy
+        sidebar = .play
+        do {
+            let resources = try RandovaniaGame.resources(in: folder)
+            let name = "Randovania \(RandovaniaGame.seedName(resources: resources, folder: folder))"
+            state.modName = name
+            install = state
+            log(.info, "Install", "Importing \(name) from \(folder.path)")
+            installTask = Task {
+                defer { installTask = nil }
+                let uuid = UUID()
+                let destination = DataFolder.profiles.appending(path: uuid.uuidString, directoryHint: .isDirectory)
+                do {
+                    try await Task.detached(priority: .userInitiated) {
+                        try RandovaniaGame.importGame(from: resources, to: destination)
+                    }.value
+                    try Task.checkCancellation()
+                    let profile = addProfile(name: name, version: "Randovania")
+                    profile.uuid = uuid
+                    profile.isMod = true
+                    profile.author = "Randovania"
+                    try? container.mainContext.save()
+                    log(.info, "Install", "\(profile.name) is ready in \(profile.folder.path)")
+                    selection = profile.id
+                    install?.finishedName = profile.name
+                    try? await Task.sleep(for: .seconds(1))
+                    install = nil
+                } catch is CancellationError {
+                    try? FileManager.default.removeItem(at: destination)
+                    install = nil
+                } catch {
+                    try? FileManager.default.removeItem(at: destination)
+                    log(.error, "Install", "\(error)")
+                    install?.failure = "Unable to import: \(error.localizedDescription)"
+                }
+            }
+        } catch {
+            state.failure = error.message
+            install = state
+            log(.error, "Install", "\(error.message) (\(folder.path))")
         }
     }
 

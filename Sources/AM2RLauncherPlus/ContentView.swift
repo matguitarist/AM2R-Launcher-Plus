@@ -1,3 +1,4 @@
+import AM2RLauncherPlusKit
 import SwiftData
 import SwiftUI
 
@@ -248,8 +249,13 @@ struct ProfilesPage: View {
         }
         .safeAreaInset(edge: .bottom, spacing: 0) { notices }
         .dropDestination(for: URL.self) { urls, _ in
-            guard let zip = urls.first(where: { $0.pathExtension.lowercased() == "zip" }), model.source != nil,
-                  model.install == nil, !model.isPlaying else { return false }
+            guard model.install == nil, !model.isPlaying else { return false }
+            // A folder Randovania exported (S-036).
+            if let folder = urls.first(where: { (try? RandovaniaGame.resources(in: $0)) != nil }) {
+                model.importRandovania(folder: folder)
+                return true
+            }
+            guard let zip = urls.first(where: { $0.pathExtension.lowercased() == "zip" }), model.source != nil else { return false }
             model.sidebar = .play
             model.startModInstall(zip: zip)
             return true
