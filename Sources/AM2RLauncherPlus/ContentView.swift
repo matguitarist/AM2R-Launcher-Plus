@@ -47,31 +47,14 @@ struct PlayPage: View {
             if let install = model.install {
                 InstallPage(state: install)
             } else if !model.forceWelcome, let profile = CurrentProfile.pick(profiles, selection: model.selection) {
-                VStack(spacing: Space.lg) {
-                    Text(profile.name)
-                        .font(.largeTitle.bold())
-                    HStack(spacing: Space.sm) {
-                        Text("Version \(profile.version)")
-                        Text("·")
-                        Label(profile.engine.title, systemImage: "cpu")
-                            .help(profile.engine.help)
-                    }
-                    .foregroundStyle(.secondary)
-                    playControls
-                    if let failure = model.lastGameFailure, failure.profile == profile.uuid, !model.isPlaying {
-                        FailureBanner()
-                    }
-                    if let summary = PlayStats.summary(lastPlayed: profile.lastPlayedAt, playTime: profile.playTime) {
-                        Text(summary)
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                    }
-                    if let error = model.playError {
-                        Label(error, systemImage: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.orange)
-                    }
+                VStack(spacing: 0) {
+                    hero(profile)
+                        .padding(.top, Space.section)
+                        .padding(.bottom, Space.lg)
+                    GameSettingsView(profile: profile)
+                        .frame(maxWidth: 600)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             } else {
                 WelcomePage()
             }
@@ -108,6 +91,34 @@ struct FailureBanner: View {
 }
 
 extension PlayPage {
+    /// Name, version and engine, Play, then last played and any problem.
+    func hero(_ profile: Profile) -> some View {
+        VStack(spacing: Space.lg) {
+            Text(profile.name)
+                .font(.largeTitle.bold())
+            HStack(spacing: Space.sm) {
+                Text("Version \(profile.version)")
+                Text("·")
+                Label(profile.engine.title, systemImage: "cpu")
+                    .help(profile.engine.help)
+            }
+            .foregroundStyle(.secondary)
+            playControls
+            if let summary = PlayStats.summary(lastPlayed: profile.lastPlayedAt, playTime: profile.playTime) {
+                Text(summary)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+            if let failure = model.lastGameFailure, failure.profile == profile.uuid, !model.isPlaying {
+                FailureBanner()
+            }
+            if let error = model.playError {
+                Label(error, systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+            }
+        }
+    }
+
     @ViewBuilder var playControls: some View {
         @Bindable var model = model
         if model.isPlaying {

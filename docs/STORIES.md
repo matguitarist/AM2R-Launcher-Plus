@@ -139,7 +139,7 @@ Status: done
 
 ### S-010 Choose display mode
 As the player, I set windowed scale, fullscreen and widescreen before playing.
-Screens: settings-game
+Screens: play
 Depends: S-004
 Thimble: 5c88f83a
 Acceptance:
@@ -150,7 +150,7 @@ Status: done
 
 ### S-011 Use the Mac-friendly controller layout
 As the player, Select opens the map and Start opens the pause menu, out of the box.
-Screens: settings-game
+Screens: play
 Depends: S-004
 Thimble: e39bca3f
 Acceptance:
@@ -162,7 +162,7 @@ Status: done
 
 ### S-012 Pick the game language
 As the player, I choose the game language from the ones the profile ships.
-Screens: settings-game
+Screens: play
 Depends: S-004
 Thimble: 43c2d810
 Acceptance:

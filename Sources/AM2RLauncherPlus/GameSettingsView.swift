@@ -2,10 +2,11 @@ import AM2RLauncherPlusKit
 import GameController
 import SwiftUI
 
-/// Settings > Game: display, controller and language of the current profile,
-/// written to its config.ini (S-010 to S-012).
+/// Display, controller and language of one profile, written to its config.ini (S-010 to S-012).
+/// Shown on the Play page under the Play button: they belong to the profile, not the app.
 struct GameSettingsView: View {
     @Environment(AppModel.self) private var model
+    let profile: Profile
     @State private var settings = GameSettings()
     @State private var languages: [GameLanguages.Language] = []
     @State private var loadedFor: UUID?
@@ -13,8 +14,7 @@ struct GameSettingsView: View {
     @State private var controllers = ControllerMonitor()
 
     var body: some View {
-        if let profile = model.currentProfile {
-            Group {
+        Form {
                 Section {
                     Toggle("Fullscreen", isOn: $settings.fullscreen)
                     Picker(settings.fullscreen ? "Display Scale" : "Window Size", selection: $settings.scale) {
@@ -54,19 +54,16 @@ struct GameSettingsView: View {
                             .symbolRenderingMode(.multicolor)
                     }
                 }
-            }
-            .disabled(model.isPlaying)
-            .task(id: profile.uuid) { load(profile) }
-            .onChange(of: settings) { old, new in
-                guard loadedFor == profile.uuid, old != new else { return }
-                var new = new
-                new.clampScale()
-                if new != settings { settings = new; return }
-                save(profile)
-            }
-        } else {
-            ContentUnavailableView("No Profile", systemImage: "gamecontroller",
-                                   description: Text("Install Community Updates to change game settings."))
+        }
+        .formStyle(.grouped)
+        .disabled(model.isPlaying)
+        .task(id: profile.uuid) { load(profile) }
+        .onChange(of: settings) { old, new in
+            guard loadedFor == profile.uuid, old != new else { return }
+            var new = new
+            new.clampScale()
+            if new != settings { settings = new; return }
+            save(profile)
         }
     }
 
