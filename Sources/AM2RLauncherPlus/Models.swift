@@ -547,10 +547,12 @@ final class AppModel {
         playError = nil
         lastGameFailure = nil
         let saves = GameRunner.saveFolder(for: profile)
-        let canWrite = canWriteSettings(for: profile)
-        if !canWrite, GameSettings.removeLauncherOnlyConfig(in: saves) {
-            log(.info, "Play", "Removed a partial config.ini so \(profile.name) writes its own settings")
+        if profile.isMod, GameSettings.removeLauncherOnlyConfig(in: saves) {
+            log(.info, "Play", "Removed a partial or broken config.ini so \(profile.name) writes clean settings")
+            // It gets the Mac layout again once it has written them.
+            profile.controllerLayoutSet = false
         }
+        let canWrite = canWriteSettings(for: profile)
         applyFirstSettings(to: profile)
         let settings = GameSettings.read(from: saves)
         // Keeps the layout's keys current, e.g. a profile set up by an earlier build of the Mac layout.

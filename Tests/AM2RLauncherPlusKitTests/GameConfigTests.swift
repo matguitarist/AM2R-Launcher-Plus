@@ -132,6 +132,12 @@ struct GameSettingsTests {
         #expect(GameSettings.gameHasWritten(in: saves))
         #expect(!GameSettings.removeLauncherOnlyConfig(in: saves))
         #expect(GameSettings.read(from: saves).fullscreen)
+        #expect(!GameSettings.hasBrokenGamepadButtons(in: saves))
+        // What FATE (AM2R 1.1) saved after starting on the partial file: junk buttons, sound effects off.
+        try "[Control]\r\nXBJoypadButtonA=\"32769\"\r\nXBJoypadButtonX=\"2\"\r\n[Sound]\r\nSoundVolume=\"100\"\r\nSoundEffects=\"0\"\r\n".write(to: GameSettings.configFile(in: saves), atomically: true, encoding: .utf8)
+        #expect(GameSettings.hasBrokenGamepadButtons(in: saves))
+        #expect(GameSettings.removeLauncherOnlyConfig(in: saves))
+        #expect(!FileManager.default.fileExists(atPath: GameSettings.configFile(in: saves).path))
     }
 
     @Test func realProfileLanguages() throws {

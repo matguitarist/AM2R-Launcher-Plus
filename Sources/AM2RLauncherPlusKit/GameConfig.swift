@@ -172,12 +172,23 @@ public struct GameSettings: Equatable, Sendable {
         return IniFile(text: text).value("SoundVolume", in: "Sound") != nil
     }
 
-    /// Removes a config.ini that holds only the launcher's keys, so the game writes its full one
-    /// on its next start. Returns whether it removed one.
+    /// Whether a gamepad button holds a value no AM2R writes (GameMaker's are 32769 and up). An AM2R 1.1
+    /// mod saves that after it started on a partial config.ini, and with it sound effects off and more.
+    public static func hasBrokenGamepadButtons(in saveFolder: URL) -> Bool {
+        guard let text = try? String(contentsOf: configFile(in: saveFolder), encoding: .utf8) else { return false }
+        let ini = IniFile(text: text)
+        return ["A", "B", "X", "L", "L2", "R", "R2", "Select", "Start", "MenuOK", "MenuCancel"].contains { button in
+            ini.value("XBJoypadButton" + button, in: "Control").flatMap(Double.init).map { $0 < 32769 } ?? false
+        }
+    }
+
+    /// Removes a config.ini that holds only the launcher's keys, or that a mod saved from one,
+    /// so the game writes a clean one on its next start. Returns whether it removed one.
     @discardableResult
     public static func removeLauncherOnlyConfig(in saveFolder: URL) -> Bool {
         let file = configFile(in: saveFolder)
-        guard FileManager.default.fileExists(atPath: file.path), !gameHasWritten(in: saveFolder) else { return false }
+        guard FileManager.default.fileExists(atPath: file.path),
+              !gameHasWritten(in: saveFolder) || hasBrokenGamepadButtons(in: saveFolder) else { return false }
         return (try? FileManager.default.removeItem(at: file)) != nil
     }
 
