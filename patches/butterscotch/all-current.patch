@@ -1,5 +1,5 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 9643079..7c39ca3 100644
+index 9643079..21097ee 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -576,7 +576,7 @@ if(PLATFORM STREQUAL "cli" OR PLATFORM STREQUAL "vita" OR PLATFORM STREQUAL "swi
@@ -7,23 +7,27 @@ index 9643079..7c39ca3 100644
          add_compile_definitions(USE_APPKIT)
          target_compile_definitions(butterscotch PRIVATE GL_SILENCE_DEPRECATION)
 -        set(BACKEND_LIBRARIES "-framework Cocoa" "-framework GameController")
-+        set(BACKEND_LIBRARIES "-framework Cocoa" "-framework GameController" "-framework OpenGL")
++        set(BACKEND_LIBRARIES "-framework Cocoa" "-framework GameController" "-framework OpenGL" "-framework CoreHaptics")
      elseif(BACKEND STREQUAL "noop")
          if(NOT ENABLE_NOOP_RENDERER)
              message(FATAL_ERROR "BACKEND=noop requires ENABLE_NOOP_RENDERER=ON")
 diff --git a/src/backends/appkit.m b/src/backends/appkit.m
-index 9623eb1..1189469 100644
+index 9623eb1..6792281 100644
 --- a/src/backends/appkit.m
 +++ b/src/backends/appkit.m
-@@ -5,6 +5,7 @@
+@@ -4,7 +4,11 @@
+ #import <AppKit/AppKit.h>
  #import <Cocoa/Cocoa.h>
  #import <GameController/GameController.h>
++#import <CoreHaptics/CoreHaptics.h>
++
++static void rumbleStopAll(void);
  #include <dlfcn.h>
 +#import <OpenGL/gl.h>
  
  #include "common.h"
  #include "input_recording.h"
-@@ -19,6 +20,47 @@
+@@ -19,6 +23,47 @@
  
  #define USE_PRIVATE_API 0
  
@@ -71,7 +75,7 @@ index 9623eb1..1189469 100644
  enum {
      IDX_LT = 6,
      IDX_RT = 7,
-@@ -88,6 +130,14 @@ static void appkitMapControllerToSlot(GCController *controller, GamepadSlot *slo
+@@ -88,6 +133,14 @@ static void appkitMapControllerToSlot(GCController *controller, GamepadSlot *slo
          slot->axisValue[2] = extended.rightThumbstick.xAxis.value;
          slot->axisValue[3] = -extended.rightThumbstick.yAxis.value;
  
@@ -86,7 +90,7 @@ index 9623eb1..1189469 100644
          if (extended.leftThumbstickButton) {
              slot->buttonDown[10] = extended.leftThumbstickButton.pressed;
              slot->buttonValue[10] = extended.leftThumbstickButton.value;
-@@ -425,6 +475,25 @@ static bool platformGetWindowFullscreen(void) {
+@@ -425,6 +478,25 @@ static bool platformGetWindowFullscreen(void) {
      return ([window styleMask] & NSWindowStyleMaskFullScreen) != 0;
  }
  
@@ -112,7 +116,111 @@ index 9623eb1..1189469 100644
  static void platformSetWindowFullscreen(bool fullscreen) {
      if (fullscreen == platformGetWindowFullscreen()) return;
      [window toggleFullScreen:nil];
-@@ -780,11 +849,161 @@ void platformInitFunctions(Runner *runner) {
+@@ -702,6 +774,7 @@ bool platformInit(int32_t reqW, int32_t reqH, const char *title, bool headless,
+ }
+ 
+ void platformExit(void) {
++    rumbleStopAll();
+     if (@available(macOS 10.15, *)) {
+         [GCController stopWirelessControllerDiscovery];
+     }
+@@ -772,19 +845,257 @@ static bool windowIsFocused(void) {
+     return [window isKeyWindow];
+ }
+ 
++// ===[ Rumble ]===
++// gamepad_set_vibration through Core Haptics: one engine per motor (left and right handle), each playing a
++// looping continuous event whose intensity follows the game. Controllers without handle motors get one
++// engine on the whole controller at the stronger of the two values.
++@interface RumbleMotor : NSObject
++@property (nonatomic, retain) CHHapticEngine *engine;
++@property (nonatomic, retain) id<CHHapticAdvancedPatternPlayer> player;
++@property (nonatomic) float level;
++@property (nonatomic) BOOL playing;
++@end
++@implementation RumbleMotor
++- (void)dealloc {
++    [_player stopAtTime:CHHapticTimeImmediate error:nil];
++    [_engine stopWithCompletionHandler:nil];
++    [_player release];
++    [_engine release];
++    [super dealloc];
++}
++@end
++
++static NSMutableDictionary<NSString *, RumbleMotor *> *rumbleMotors = nil;
++
++static RumbleMotor *rumbleMotor(GCController *controller, GCHapticsLocality locality) API_AVAILABLE(macos(11.0)) {
++    if (rumbleMotors == nil) rumbleMotors = [[NSMutableDictionary alloc] init];
++    NSString *key = [NSString stringWithFormat:@"%p/%@", controller, locality];
++    RumbleMotor *motor = rumbleMotors[key];
++    if (motor != nil) return [motor isKindOfClass:[NSNull class]] ? nil : motor;
++    GCDeviceHaptics *haptics = controller.haptics;
++    CHHapticEngine *engine = [haptics.supportedLocalities containsObject:locality] ? [haptics createEngineWithLocality:locality] : nil;
++    NSError *error = nil;
++    CHHapticEvent *event = [[[CHHapticEvent alloc] initWithEventType:CHHapticEventTypeHapticContinuous
++        parameters:@[[[[CHHapticEventParameter alloc] initWithParameterID:CHHapticEventParameterIDHapticIntensity value:1.0f] autorelease],
++                     [[[CHHapticEventParameter alloc] initWithParameterID:CHHapticEventParameterIDHapticSharpness value:0.2f] autorelease]]
++        relativeTime:0 duration:1.0] autorelease];
++    CHHapticPattern *pattern = engine ? [[[CHHapticPattern alloc] initWithEvents:@[event] parameters:@[] error:&error] autorelease] : nil;
++    id<CHHapticAdvancedPatternPlayer> player = pattern && [engine startAndReturnError:&error] ? [engine createAdvancedPlayerWithPattern:pattern error:&error] : nil;
++    if (player == nil) {
++        rumbleMotors[key] = (RumbleMotor *)[NSNull null];
++        return nil;
++    }
++    player.loopEnabled = YES;
++    motor = [[[RumbleMotor alloc] init] autorelease];
++    motor.engine = engine;
++    motor.player = player;
++    engine.resetHandler = ^{ motor.playing = NO; [motor.engine startAndReturnError:nil]; };
++    rumbleMotors[key] = motor;
++    return motor;
++}
++
++static void rumbleSet(RumbleMotor *motor, float level) {
++    if (motor == nil || fabsf(level - motor.level) < 0.01f) return;
++    motor.level = level;
++    if (level <= 0.0f) {
++        if (motor.playing) [motor.player stopAtTime:CHHapticTimeImmediate error:nil];
++        motor.playing = NO;
++        return;
++    }
++    CHHapticDynamicParameter *intensity = [[[CHHapticDynamicParameter alloc]
++        initWithParameterID:CHHapticDynamicParameterIDHapticIntensityControl value:level relativeTime:0] autorelease];
++    if (!motor.playing) {
++        motor.playing = [motor.player startAtTime:CHHapticTimeImmediate error:nil];
++    }
++    [motor.player sendParameters:@[intensity] atTime:CHHapticTimeImmediate error:nil];
++}
++
++static void platformSetGamepadVibration(int32_t device, float left, float right) {
++    if (@available(macOS 11.0, *)) {
++        NSArray<GCController *> *controllers = [GCController controllers];
++        if (device < 0 || device >= (int32_t) MIN((NSUInteger) MAX_GAMEPADS, controllers.count)) return;
++        GCController *controller = controllers[device];
++        if (controller.haptics == nil) return;
++        RumbleMotor *leftMotor = rumbleMotor(controller, GCHapticsLocalityLeftHandle);
++        RumbleMotor *rightMotor = rumbleMotor(controller, GCHapticsLocalityRightHandle);
++        if (leftMotor != nil || rightMotor != nil) {
++            rumbleSet(leftMotor, left);
++            rumbleSet(rightMotor, right);
++        } else {
++            rumbleSet(rumbleMotor(controller, GCHapticsLocalityDefault), fmaxf(left, right));
++        }
++    }
++}
++
++static void rumbleStopAll(void) {
++    [rumbleMotors release];
++    rumbleMotors = nil;
++}
++
+ void platformInitFunctions(Runner *runner) {
+     g_runner = runner;
+     runner->windowHasFocus = windowIsFocused;
++    runner->setGamepadVibration = platformSetGamepadVibration;
+     runner->setCursor = platformSetCursor;
+     runner->getWindowPosition = platformGetWindowPosition;
      runner->setWindowPosition = platformSetWindowPosition;
      runner->getWindowFullscreen = platformGetWindowFullscreen;
      runner->setWindowFullscreen = platformSetWindowFullscreen;
@@ -274,7 +382,7 @@ index 9623eb1..1189469 100644
      [glContext flushBuffer];
  }
  
-@@ -828,6 +1047,7 @@ bool platformHandleEvents(void)
+@@ -828,6 +1139,7 @@ bool platformHandleEvents(void)
                      g_runner->gamepads->connectedCount++;
                  }
              }
@@ -501,10 +609,10 @@ index a4feef1..b5c5159 100644
 +    logInfo("Runner: display_reset applied, surfaces lost\n");
 +}
 diff --git a/src/runner.h b/src/runner.h
-index d85955c..8d85bbf 100644
+index d85955c..d9d86ca 100644
 --- a/src/runner.h
 +++ b/src/runner.h
-@@ -756,6 +756,10 @@ struct Runner {
+@@ -756,10 +756,16 @@ struct Runner {
      int32_t applicationSurfaceId;
      void (*setWindowTitle)(const char* title);
      bool (*getWindowSize)(int32_t* outW, int32_t* outH);
@@ -515,7 +623,13 @@ index d85955c..8d85bbf 100644
      void (*setWindowSize)(int32_t width, int32_t height);
      bool (*getWindowPosition)(int32_t* outX, int32_t* outY);
      void (*setWindowPosition)(int32_t x, int32_t y);
-@@ -926,6 +930,7 @@ struct Runner {
+     bool (*windowHasFocus)(void);
++    // gamepad_set_vibration: left and right motor strength, 0 to 1. Null when the platform has no rumble.
++    void (*setGamepadVibration)(int32_t device, float left, float right);
+     bool (*getWindowFullscreen)(void);
+     void (*setWindowFullscreen)(bool fullscreen);
+     void (*setCursor)(int32_t cursorType);
+@@ -926,6 +932,7 @@ struct Runner {
  
  const char* Runner_getEventName(int32_t eventType, int32_t eventSubtype);
  void Runner_reset(Runner* runner);
@@ -524,18 +638,72 @@ index d85955c..8d85bbf 100644
  void Runner_setGameArgs(Runner* runner, char** argv, int32_t argc);
  const char* Runner_getProgramDirectory(Runner* runner);
 diff --git a/src/vm_builtins.c b/src/vm_builtins.c
-index 4cbc295..671e41a 100644
+index 4cbc295..369cc96 100644
 --- a/src/vm_builtins.c
 +++ b/src/vm_builtins.c
-@@ -28,6 +28,7 @@
+@@ -28,6 +28,8 @@
  
  #include "rvalue.h"
  #include "stb_ds.h"
 +#include "stb_image.h"
++#include "stb_image_write.h"
  #include "text_utils.h"
  #include "collision.h"
  #include "ini.h"
-@@ -9812,6 +9813,13 @@ static RValue builtin_window_set_position(VMContext* ctx, RValue* args, MAYBE_UN
+@@ -4918,7 +4920,34 @@ static RValue builtin_os_get_region(MAYBE_UNUSED VMContext* ctx, MAYBE_UNUSED RV
+     return RValue_makeOwnedString(safeStrdup("US"));
+ }
+ 
+-STUB_RETURN_FALSE(os_is_paused)
++// GMS on desktop reports the game as paused by the OS while its window is in the background.
++// AM2R clears a stuck Alt/Option key then (keyboard_clear(vk_alt)).
++static RValue builtin_os_is_paused(VMContext* ctx, MAYBE_UNUSED RValue* args, MAYBE_UNUSED int32_t argCount) {
++    Runner* runner = ctx->runner;
++    if (runner != nullptr && runner->windowHasFocus) return RValue_makeBool(!runner->windowHasFocus());
++    return RValue_makeBool(false);
++}
++
++// [x1, y1, x2, y2] of the application surface in the window. When the game draws the application
++// surface itself, the GUI layer covers the window from its origin (see loop.c), so that is the answer.
++static RValue builtin_application_get_position(VMContext* ctx, MAYBE_UNUSED RValue* args, MAYBE_UNUSED int32_t argCount) {
++    Runner* runner = ctx->runner;
++    GMLArray* out = GMLArray_create(ctx->dataWin, 4);
++    int32_t x = 0, y = 0, w = 0, h = 0;
++    if (runner != nullptr) {
++        int32_t windowW = runner->viewportX * 2 + runner->viewportW, windowH = runner->viewportY * 2 + runner->viewportH;
++        if (runner->appSurfaceAutoDraw) {
++            x = runner->viewportX; y = runner->viewportY; w = runner->viewportW; h = runner->viewportH;
++        } else {
++            w = windowW; h = windowH;
++        }
++    }
++    *GMLArray_slot(out, 0) = RValue_makeReal(x);
++    *GMLArray_slot(out, 1) = RValue_makeReal(y);
++    *GMLArray_slot(out, 2) = RValue_makeReal(x + w);
++    *GMLArray_slot(out, 3) = RValue_makeReal(y + h);
++    return RValue_makeArray(out);
++}
+ 
+ // ===[ XBOX ONE FUNCTIONS ]===
+ 
+@@ -8637,6 +8666,16 @@ static RValue builtin_gamepad_get_device_count(VMContext* ctx, RValue* args, int
+     return RValue_makeReal((GMLReal) RunnerGamepad_getDeviceCount(runner->gamepads));
+ }
+ 
++static RValue builtin_gamepad_set_vibration(VMContext* ctx, RValue* args, int32_t argCount) {
++    Runner* runner = ctx->runner;
++    if (runner == NULL || runner->setGamepadVibration == NULL || argCount < 3) return RValue_makeBool(false);
++    double left = RValue_toReal(args[1]), right = RValue_toReal(args[2]);
++    left = left < 0 ? 0 : (left > 1 ? 1 : left);
++    right = right < 0 ? 0 : (right > 1 ? 1 : right);
++    runner->setGamepadVibration(RValue_toInt32(args[0]), (float) left, (float) right);
++    return RValue_makeBool(true);
++}
++
+ static RValue builtin_gamepad_is_connected(VMContext* ctx, RValue* args, int32_t argCount) {
+     Runner* runner = ctx->runner;
+     if (runner == NULL || runner->gamepads == NULL) return RValue_makeBool(false);
+@@ -9812,6 +9851,13 @@ static RValue builtin_window_set_position(VMContext* ctx, RValue* args, MAYBE_UN
      return RValue_makeUndefined();
  }
  
@@ -549,7 +717,51 @@ index 4cbc295..671e41a 100644
  static RValue builtin_window_set_size(VMContext* ctx, RValue* args, MAYBE_UNUSED int32_t argCount) {
      REQUIRE_ARGC_AT_LEAST("window_set_size", 2, RValue_makeUndefined());
  
-@@ -13384,10 +13392,89 @@ static RValue builtin_surface_get_texture(VMContext* ctx, RValue* args, MAYBE_UN
+@@ -13105,6 +13151,43 @@ static RValue builtin_surface_resize(VMContext* ctx, RValue* args, MAYBE_UNUSED
+     return RValue_makeUndefined();
+ }
+ 
++typedef struct { uint8_t* data; int32_t size; } PngBuffer;
++
++static void appendPng(void* context, void* data, int size) {
++    PngBuffer* buffer = (PngBuffer*) context;
++    uint8_t* grown = (uint8_t*) realloc(buffer->data, (size_t) buffer->size + (size_t) size);
++    if (grown == nullptr) return;
++    memcpy(grown + buffer->size, data, (size_t) size);
++    buffer->data = grown;
++    buffer->size += size;
++}
++
++// surface_save(surface, fname): a PNG whatever the name, like GMS. AM2R saves its pause backdrop
++// as working_directory + "/tempscr" and reloads it with background_add when the surface was lost.
++static RValue builtin_surface_save(VMContext* ctx, RValue* args, int32_t argCount) {
++    Runner* runner = ctx->runner;
++    if (runner == nullptr || runner->fileSystem == nullptr || argCount < 2) return RValue_makeBool(false);
++    int32_t surfaceId = (int32_t) RValue_toReal(args[0]);
++    int32_t w = (int32_t) Renderer_getSurfaceWidth(runner->renderer, surfaceId);
++    int32_t h = (int32_t) Renderer_getSurfaceHeight(runner->renderer, surfaceId);
++    if (w <= 0 || h <= 0) return RValue_makeBool(false);
++    uint8_t* pixels = (uint8_t*) safeMalloc((size_t) w * (size_t) h * 4);
++    if (!runner->renderer->vtable->surfaceGetPixels(runner->renderer, surfaceId, pixels)) {
++        free(pixels);
++        return RValue_makeBool(false);
++    }
++    // surfaceGetPixels returns the bottom row first; a negative stride writes it top down.
++    PngBuffer png = { nullptr, 0 };
++    int stride = w * 4;
++    bool ok = stbi_write_png_to_func(appendPng, &png, w, h, 4, pixels + (size_t) (h - 1) * (size_t) stride, -stride) != 0;
++    free(pixels);
++    char* path = RValue_toString(args[1], ctx->dataWin);
++    ok = ok && png.data != nullptr && runner->fileSystem->vtable->writeFileBinary(runner->fileSystem, path, png.data, png.size);
++    free(path);
++    free(png.data);
++    return RValue_makeBool(ok);
++}
++
+ static RValue builtin_surface_getpixel(VMContext* ctx, RValue* args, MAYBE_UNUSED int32_t argCount) {
+     Runner* runner = ctx->runner;
+ 
+@@ -13384,10 +13467,89 @@ static RValue builtin_surface_get_texture(VMContext* ctx, RValue* args, MAYBE_UN
  }
  
  // Sprite functions
@@ -643,7 +855,7 @@ index 4cbc295..671e41a 100644
  }
  
  static RValue builtin_sprite_exists(VMContext* ctx, RValue* args, MAYBE_UNUSED int32_t argCount) {
-@@ -13779,8 +13866,21 @@ static RValue builtin_color_get_value(MAYBE_UNUSED VMContext* ctx, RValue* args,
+@@ -13779,8 +13941,21 @@ static RValue builtin_color_get_value(MAYBE_UNUSED VMContext* ctx, RValue* args,
  }
  
  // Display stubs
@@ -667,7 +879,31 @@ index 4cbc295..671e41a 100644
  
  static int32_t resolveGuiWidth(Runner* runner) {
      if (runner->guiWidth > 0) return runner->guiWidth;
-@@ -25301,6 +25401,9 @@ void VMBuiltins_registerAll(VMContext* ctx) {
+@@ -24747,6 +24922,7 @@ void VMBuiltins_registerAll(VMContext* ctx) {
+     VM_registerBuiltin(ctx, "os_get_language", builtin_os_get_language);
+     VM_registerBuiltin(ctx, "os_get_region", builtin_os_get_region);
+     VM_registerBuiltin(ctx, "os_is_paused", builtin_os_is_paused);
++    VM_registerBuiltin(ctx, "application_get_position", builtin_application_get_position);
+ 
+     // Xbox One
+     VM_registerBuiltin(ctx, "xboxone_show_account_picker", builtin_xboxone_show_account_picker);
+@@ -24958,6 +25134,7 @@ void VMBuiltins_registerAll(VMContext* ctx) {
+     // Gamepad
+     VM_registerBuiltin(ctx, "gamepad_get_device_count", builtin_gamepad_get_device_count);
+     VM_registerBuiltin(ctx, "gamepad_is_connected", builtin_gamepad_is_connected);
++    VM_registerBuiltin(ctx, "gamepad_set_vibration", builtin_gamepad_set_vibration);
+     VM_registerBuiltin(ctx, "gamepad_button_check", builtin_gamepad_button_check);
+     VM_registerBuiltin(ctx, "gamepad_button_check_pressed", builtin_gamepad_button_check_pressed);
+     VM_registerBuiltin(ctx, "gamepad_button_check_released", builtin_gamepad_button_check_released);
+@@ -25290,6 +25467,7 @@ void VMBuiltins_registerAll(VMContext* ctx) {
+     VM_registerBuiltin(ctx, "surface_reset_target", builtin_surface_reset_target);
+     VM_registerBuiltin(ctx, "surface_get_target", builtin_surface_get_target);
+     VM_registerBuiltin(ctx, "surface_getpixel", builtin_surface_getpixel);
++    VM_registerBuiltin(ctx, "surface_save", builtin_surface_save);
+     VM_registerBuiltin(ctx, "surface_getpixel_ext", builtin_surface_getpixel_ext);
+     VM_registerBuiltin(ctx, "surface_exists", builtin_surface_exists);
+     VM_registerBuiltin(ctx, "surface_get_width", builtin_surface_get_width);
+@@ -25301,6 +25479,9 @@ void VMBuiltins_registerAll(VMContext* ctx) {
  
      // Sprite info
      VM_registerBuiltin(ctx, "sprite_add", builtin_sprite_add);
