@@ -54,7 +54,7 @@ renderer then, so a Metal renderer, MetalFX upscaling and shader filters become 
 - **Swift 6 + SwiftUI**, macOS 26+, Liquid Glass, built with the bama template (Swift package, no Xcode GUI).
 - Modules: `AM2RCore` (zip validation, PatchData sync, patching, profile building, launching),
   `ModLibrary`, and the app UI. Core has no UI so it can drive a CLI later.
-- **Patching:** compile xdelta3's C sources into a SwiftPM target (universal arm64/x86_64).
+- **Patching:** a pure Swift VCDIFF decoder (`AM2RLauncherPlusKit/VCDiff.swift`) with LZMA via Apple Compression.
   No runtime dependency, no Homebrew.
 - **PatchData sync:** download the repo archive over HTTPS (GitHub API, GitLab mirror as fallback)
   instead of bundling libgit2. Check by commit SHA.

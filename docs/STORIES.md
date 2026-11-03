@@ -53,7 +53,7 @@ Screens: install-progress
 Depends: S-002
 Thimble: 42f5c97c
 Acceptance:
-- [unit] xdelta3 (compiled into the app) applies `data/game.xdelta` to 1.1 `data.win`; the output MD5
+- [unit] The built-in VCDIFF decoder (Swift, LZMA via Apple Compression) applies `data/game.xdelta` to 1.1 `data.win`; the output MD5
   is `0de029951c94b04545c9c257053ad712` for 1.5.5.
 - [unit] A failed or wrong-hash patch leaves no half-built profile behind.
 UX:
