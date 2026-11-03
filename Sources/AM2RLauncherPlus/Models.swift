@@ -133,6 +133,20 @@ struct InstallState: Equatable {
     var finishedName: String?
 }
 
+/// A game run that ended with an error (S-006).
+struct GameFailure: Equatable {
+    var profile: UUID
+    var log: URL
+    var status: Int32
+}
+
+/// What the log sheet shows.
+struct LogSheetItem: Identifiable, Equatable {
+    var log: URL
+    var profileName: String
+    var id: URL { log }
+}
+
 /// The sidebar pages. Snapshot mode walks through every case.
 enum SidebarItem: String, CaseIterable, Identifiable {
     case play, profiles
@@ -170,7 +184,9 @@ final class AppModel {
     /// The running game, if any (S-005).
     var game: GameRunner?
     /// Set when the game quit with an error (S-006 shows it with the log).
-    var lastGameFailure: (profile: UUID, log: URL)?
+    var lastGameFailure: GameFailure?
+    /// The log shown in the log sheet (S-006).
+    var logSheet: LogSheetItem?
     var playError: String?
     /// Asks before stopping a running game.
     var confirmStop = false
@@ -285,6 +301,20 @@ final class AppModel {
         game?.stop()
     }
 
+    /// The log to show for the current profile: the failed run's, or else the newest.
+    var currentLog: URL? {
+        guard let profile = currentProfile else { return nil }
+        if let failure = lastGameFailure, failure.profile == profile.uuid { return failure.log }
+        return LogTail.newest(in: GameRunner.logFolder(for: profile))
+    }
+
+    /// Game > Show Log (⌘L) and the failure banner's Show Log.
+    func showLog() {
+        guard let profile = currentProfile, let log = currentLog else { return }
+        sidebar = .play
+        logSheet = LogSheetItem(log: log, profileName: profile.name)
+    }
+
     private func gameEnded(status: Int32) {
         guard let game else { return }
         let profiles = (try? container.mainContext.fetch(FetchDescriptor<Profile>())) ?? []
@@ -294,7 +324,7 @@ final class AppModel {
             try? container.mainContext.save()
         }
         if status != 0 && !game.stoppedByUser {
-            lastGameFailure = (game.profileID, game.log)
+            lastGameFailure = GameFailure(profile: game.profileID, log: game.log, status: status)
         }
         self.game = nil
     }

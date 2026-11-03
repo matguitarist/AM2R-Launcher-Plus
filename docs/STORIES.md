@@ -116,7 +116,7 @@ UX:
 - States: log sheet empty: "The game didn't write anything."; too much: last 5,000 lines with "Reveal in Finder" for the full file.
 - Words: sheet title "Log — Community Updates 1.5.5", buttons "Copy", "Reveal in Finder", "Done".
 - Access: Escape closes the sheet; text view is selectable and VoiceOver-readable; banner has a warning icon plus words.
-Status: todo
+Status: done
 
 ### S-007 Bundle the engine
 As the player, I never install Butterscotch myself: it ships inside the app.

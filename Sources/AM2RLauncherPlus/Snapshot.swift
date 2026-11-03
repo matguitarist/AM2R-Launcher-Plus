@@ -85,6 +85,31 @@ enum Snapshot {
                 }
                 model.previewPlaying = false
             }
+            // S-006: play-failed (banner) and log-sheet.
+            if let profile = model.currentProfile, only?.contains("play-failed") ?? true || only?.contains("log-sheet") ?? true {
+                let logs = GameRunner.logFolder(for: profile)
+                try? FileManager.default.createDirectory(at: logs, withIntermediateDirectories: true)
+                let log = logs.appending(path: "2026-11-03T10-00-00Z.log")
+                try? sampleLog.write(to: log, atomically: true, encoding: .utf8)
+                model.sidebar = .play
+                model.lastGameFailure = GameFailure(profile: profile.uuid, log: log, status: 1)
+                for mode in ["light", "dark"] {
+                    NSApp.appearance = NSAppearance(named: mode == "light" ? .aqua : .darkAqua)
+                    if only?.contains("play-failed") ?? true {
+                        try? await Task.sleep(for: .seconds(0.8))
+                        capture(to: "\(dir)/play-failed-\(mode).png")
+                    }
+                    if only?.contains("log-sheet") ?? true {
+                        model.showLog()
+                        try? await Task.sleep(for: .seconds(1))
+                        let main = NSApp.windows.first { $0.canBecomeMain && !$0.isSheet }
+                        capture(to: "\(dir)/log-sheet-\(mode).png", window: main?.attachedSheet)
+                        model.logSheet = nil
+                        try? await Task.sleep(for: .seconds(0.5))
+                    }
+                }
+                model.lastGameFailure = nil
+            }
             if only == nil || only?.contains("settings") == true {
                 let main = NSApp.windows.first { $0.canBecomeMain && !$0.isSheet }
                 openSettings()
@@ -105,6 +130,15 @@ enum Snapshot {
             NSApp.terminate(nil)
         }
     }
+
+    private static let sampleLog = """
+        Butterscotch \u{2014} GameMaker runner
+        Loaded "AM2R" (bytecode 16, GMS 1.4.1804)
+        Room: rm_subscreen
+        Room: rm_a0h01
+        ERROR: surface_save is not implemented
+        Fatal error in action number 1 of Draw Event for object oControl
+        """
 
     /// Captures the real window with screencapture, so glass, sidebars, and
     /// materials look exactly as on screen. That needs Screen Recording

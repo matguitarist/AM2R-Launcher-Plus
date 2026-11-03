@@ -41,6 +41,10 @@ struct AM2RLauncherPlusApp: App {
                 Button("Stop") { model.confirmStop = true; model.sidebar = .play }
                     .keyboardShortcut(".")
                     .disabled(model.game == nil)
+                Divider()
+                Button("Show Log") { model.showLog() }
+                    .keyboardShortcut("l")
+                    .disabled(model.currentLog == nil)
             }
         }
 

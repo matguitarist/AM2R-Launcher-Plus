@@ -38,6 +38,29 @@ enum SelfTest {
             try? context.save()
             check("deleting the profile removes it", profiles().count == before)
 
+            // S-006: a game that fails to start is reported with its log.
+            if GameRunner.engine != nil {
+                let broken = model.addProfile(name: "Broken", version: "0")
+                try? FileManager.default.createDirectory(at: broken.folder, withIntermediateDirectories: true)
+                try? Data("not a game".utf8).write(to: broken.folder.appending(path: "game.ios"))
+                model.play(extraArguments: ["--headless"])
+                for _ in 0..<100 where model.game != nil { try? await Task.sleep(for: .milliseconds(100)) }
+                check("a game that fails is reported", model.lastGameFailure?.profile == broken.uuid, "\(String(describing: model.lastGameFailure))")
+                check("the failure points at its log", model.currentLog == model.lastGameFailure?.log && model.currentLog != nil)
+                model.showLog()
+                check("Show Log opens the failed run's log", model.logSheet?.log == model.lastGameFailure?.log)
+                model.logSheet = nil
+                model.play(extraArguments: ["--headless"])
+                check("Play Again clears the banner", model.lastGameFailure == nil)
+                for _ in 0..<100 where model.game != nil { try? await Task.sleep(for: .milliseconds(100)) }
+                model.lastGameFailure = nil
+                for folder in [broken.folder, GameRunner.logFolder(for: broken), GameRunner.saveFolder(for: broken)] {
+                    try? FileManager.default.removeItem(at: folder)
+                }
+                context.delete(broken)
+                try? context.save()
+            }
+
             // S-001: choosing AM2R 1.1
             let fake = URL.temporaryDirectory.appending(path: "selftest-fake-am2r", directoryHint: .isDirectory)
             try? FileManager.default.createDirectory(at: fake, withIntermediateDirectories: true)

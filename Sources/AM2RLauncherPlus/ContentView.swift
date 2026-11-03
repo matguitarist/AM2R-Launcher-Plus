@@ -58,6 +58,9 @@ struct PlayPage: View {
                     }
                     .foregroundStyle(.secondary)
                     playControls
+                    if let failure = model.lastGameFailure, failure.profile == profile.uuid, !model.isPlaying {
+                        FailureBanner()
+                    }
                     if let summary = PlayStats.summary(lastPlayed: profile.lastPlayedAt, playTime: profile.playTime) {
                         Text(summary)
                             .font(.callout)
@@ -74,6 +77,33 @@ struct PlayPage: View {
             }
         }
         .navigationTitle("Play")
+        .sheet(item: Bindable(model).logSheet) { item in
+            LogSheet(item: item)
+        }
+    }
+}
+
+/// "AM2R stopped unexpectedly." with Show Log and Play Again (S-006).
+struct FailureBanner: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        HStack(spacing: Space.lg) {
+            Label("AM2R stopped unexpectedly.", systemImage: "exclamationmark.triangle.fill")
+                .symbolRenderingMode(.multicolor)
+                .gridProbe("failure-message", area: "failure-banner")
+            Spacer(minLength: Space.lg)
+            Button("Show Log") { model.showLog() }
+                .help("Read what the game wrote before it stopped (⌘L)")
+            Button("Play Again") { model.play() }
+                .help("Start AM2R again (⌘P)")
+        }
+        .padding(.horizontal, Space.lg)
+        .padding(.vertical, Space.md)
+        .frame(width: 480)
+        .background(.quaternary.opacity(0.25), in: .rect(cornerRadius: 12))
+        .gridArea("failure-banner", inset: Space.md)
+        .accessibilityElement(children: .contain)
     }
 }
 
