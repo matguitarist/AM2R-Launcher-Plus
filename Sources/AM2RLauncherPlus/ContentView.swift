@@ -13,6 +13,8 @@ struct ContentView: View {
             switch model.sidebar ?? .play {
             case .play: PlayPage()
             case .profiles: ProfilesPage()
+            case .mods: ModsPage()
+            case .log: DebugLogPage()
             }
         }
         .modifier(ProfileDialogs())

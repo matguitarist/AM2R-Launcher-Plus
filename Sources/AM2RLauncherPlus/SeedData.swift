@@ -27,7 +27,18 @@ enum SeedData {
         mod.installedAt = Date.now.addingTimeInterval(-7 * 86_400)
         mod.lastPlayedAt = Date.now.addingTimeInterval(-2 * 86_400)
         mod.playTime = 45 * 60
+        mod.notes = "A sample mod with a longer description, the way mods describe themselves in their profile.xml, so the Mods page shows two lines of it."
         context.insert(mod)
+        // The community mod list, offline.
+        model.modCatalog = [
+            ModCatalog.Entry(category: "Mods for Community Updates", name: "AM2R Turbo Edition", author: "DodoBirb",
+                             summary: "A mod for AM2R 1.5.5 that adds several new speedbooster techniques.", link: URL(string: "https://example.com/turbo")),
+            ModCatalog.Entry(category: "Mods for Community Updates", name: "AM2R Hellrun", author: "DodoBirb",
+                             summary: "AM2R 1.5.5 mod where all rooms outside of save points will deal damage to you. Move quickly to stay alive!",
+                             link: URL(string: "https://example.com/hellrun")),
+            ModCatalog.Entry(category: "Mods for Speedrunning", name: "Practice Mod", author: "Nommiin",
+                             summary: "A mod based on YAL's reconstruction, used for speedrunning practice. Has savestates.", link: URL(string: "https://example.com/practice")),
+        ]
         let current = Profile(name: "Community Updates 1.5.5", version: "1.5.5")
         current.lastPlayedAt = Date.now.addingTimeInterval(-3_600)
         current.playTime = 2 * 3_600 + 14 * 60

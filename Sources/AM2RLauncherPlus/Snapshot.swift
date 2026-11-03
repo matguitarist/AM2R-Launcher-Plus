@@ -196,25 +196,23 @@ enum Snapshot {
                 }
                 model.lastGameFailure = nil
             }
-            // The Debug Log window: debug-log-launcher and debug-log-game.
-            if let profile = model.currentProfile, only?.contains("debug-log-launcher") ?? true || only?.contains("debug-log-game") ?? true {
+            // The Log page with sample entries: log-launcher and log-game.
+            if let profile = model.currentProfile, only?.contains("log-launcher") ?? true || only?.contains("log-game") ?? true {
                 for (level, source, message) in sampleEvents { log(level, source, message) }
                 let logs = GameRunner.logFolder(for: profile)
                 try? FileManager.default.createDirectory(at: logs, withIntermediateDirectories: true)
                 try? sampleGameLog.write(to: logs.appending(path: "2026-11-03T18-29-40.log"), atomically: true, encoding: .utf8)
-                openWindow(id: "debug-log")
-                try? await Task.sleep(for: .seconds(1))
-                let window = NSApp.windows.first { $0.title == "Debug Log" }
-                for source in DebugLogSource.allCases where only?.contains("debug-log-\(source.rawValue)") ?? true {
+                model.sidebar = .log
+                for source in DebugLogSource.allCases where only?.contains("log-\(source.rawValue)") ?? true {
                     model.debugLogSource = source
                     for mode in ["light", "dark"] {
                         NSApp.appearance = NSAppearance(named: mode == "light" ? .aqua : .darkAqua)
                         try? await Task.sleep(for: .seconds(1.5))
-                        capture(to: "\(dir)/debug-log-\(source.rawValue)-\(mode).png", window: window)
+                        capture(to: "\(dir)/log-\(source.rawValue)-\(mode).png")
                     }
                 }
                 model.debugLogSource = .launcher
-                window?.close()
+                model.sidebar = .play
             }
             if only == nil || only?.contains("settings") == true {
                 let main = NSApp.windows.first { $0.canBecomeMain && !$0.isSheet }

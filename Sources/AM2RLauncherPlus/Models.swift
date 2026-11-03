@@ -60,6 +60,8 @@ final class Profile {
     var isMod: Bool = false
     /// The mod's author from its profile.xml.
     var author: String = ""
+    /// The mod's own description (ProfileNotes in its profile.xml).
+    var notes: String = ""
 
     var displayFilter: DisplayFilter {
         get { DisplayFilter(rawValue: displayFilterRaw) ?? .none }
@@ -235,7 +237,7 @@ struct LogSheetItem: Identifiable, Equatable {
 
 /// The sidebar pages. Snapshot mode walks through every case.
 enum SidebarItem: String, CaseIterable, Identifiable {
-    case play, profiles
+    case play, profiles, mods, log
 
     var id: String { rawValue }
 
@@ -243,6 +245,8 @@ enum SidebarItem: String, CaseIterable, Identifiable {
         switch self {
         case .play: "Play"
         case .profiles: "Profiles"
+        case .mods: "Mods"
+        case .log: "Log"
         }
     }
 
@@ -250,6 +254,8 @@ enum SidebarItem: String, CaseIterable, Identifiable {
         switch self {
         case .play: "play.circle"
         case .profiles: "square.stack"
+        case .mods: "puzzlepiece.extension"
+        case .log: "list.bullet.rectangle"
         }
     }
 }
@@ -284,6 +290,10 @@ final class AppModel {
     var showChooser = false
     /// The open panel for Profile › Install Mod… (S-033).
     var showModChooser = false
+    /// The community's mod list for the Mods page; nil until loaded.
+    var modCatalog: [ModCatalog.Entry]?
+    var modCatalogError: String?
+    var loadingModCatalog = false
     /// Snapshot mode shows the welcome page even when profiles exist.
     var forceWelcome = false
     private var hashCache = HashCache(file: DataFolder.hashCache)
@@ -457,6 +467,7 @@ final class AppModel {
                 profile.uuid = uuid
                 profile.isMod = true
                 profile.author = package.author
+                profile.notes = package.profile.notes.trimmingCharacters(in: .whitespacesAndNewlines)
                 applyFirstSettings(to: profile)
                 try? container.mainContext.save()
                 log(.info, "Install", "\(profile.name) is ready in \(profile.folder.path)")
@@ -481,6 +492,23 @@ final class AppModel {
                 log(.error, "Install", "\(error)")
                 install?.failure = "Unable to install: \(error.localizedDescription)"
             }
+        }
+    }
+
+    /// Reads the community's mod list once per launch, or again with `force`. Test runs stay offline.
+    func loadModCatalog(force: Bool = false) async {
+        guard !loadingModCatalog, force || modCatalog == nil else { return }
+        guard !SelfTest.requested, (ProcessInfo.processInfo.environment["APP_SNAPSHOT"] ?? "").isEmpty else { return }
+        loadingModCatalog = true
+        defer { loadingModCatalog = false }
+        do {
+            let entries = try await ModCatalog.fetch()
+            modCatalog = entries
+            modCatalogError = nil
+            log(.info, "Mods", "Mod list: \(entries.count) mods")
+        } catch {
+            modCatalogError = error.message
+            log(.warning, "Mods", "Mod list: \(error.message)")
         }
     }
 

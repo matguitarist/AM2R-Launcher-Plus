@@ -38,6 +38,13 @@ struct AM2RLauncherPlusApp: App {
                 Button("Choose AM2R 1.1…") { model.showChooser = true }
                     .keyboardShortcut("o")
             }
+            CommandGroup(before: .sidebar) {
+                ForEach(Array(SidebarItem.allCases.enumerated()), id: \.element) { index, page in
+                    Button(page.title) { model.sidebar = page }
+                        .keyboardShortcut(KeyEquivalent(Character(String(index + 1))))
+                }
+                Divider()
+            }
             CommandMenu("Profile") {
                 Button("Install Mod…") { model.showModChooser = true }
                     .keyboardShortcut("o", modifiers: [.command, .option])
@@ -108,17 +115,10 @@ struct AM2RLauncherPlusApp: App {
                 Button("Show Log") { model.showLog() }
                     .keyboardShortcut("l")
                     .disabled(model.currentLog == nil)
-                DebugLogMenuItem()
+                Button("Debug Log") { model.sidebar = .log }
+                    .keyboardShortcut("l", modifiers: [.command, .option])
             }
         }
-
-        Window("Debug Log", id: "debug-log") {
-            DebugLogWindow()
-                .environment(model)
-                .themed()
-        }
-        .modelContainer(model.container)
-        .defaultSize(width: 960, height: 560)
 
         Settings {
             SettingsView()

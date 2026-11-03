@@ -31,7 +31,8 @@ enum DebugLogSource: String, CaseIterable, Identifiable {
 
 /// Game › Debug Log (⌥⌘L): the launcher's events or the current profile's game output, live,
 /// with level filters that double as counts, search, Follow and Clear.
-struct DebugLogWindow: View {
+/// The Log page: launcher events and the current profile's game log.
+struct DebugLogPage: View {
     @Environment(AppModel.self) private var model
     @State private var levels: Set<DebugLog.Level> = [.info, .warning, .error]
     @State private var search = ""
@@ -59,8 +60,7 @@ struct DebugLogWindow: View {
             entryList(shown)
                 .overlay { emptyState(all: all, shown: shown) }
         }
-        .frame(minWidth: 640, minHeight: 320)
-        .navigationTitle("Debug Log")
+        .navigationTitle("Log")
         .navigationSubtitle(subtitle)
         .searchable(text: $search, placement: .toolbar, prompt: "Search")
         .toolbar { toolbar }
@@ -223,12 +223,4 @@ struct DebugLogRow: View {
     }
 }
 
-/// Game › Debug Log (⌥⌘L).
-struct DebugLogMenuItem: View {
-    @Environment(\.openWindow) private var openWindow
 
-    var body: some View {
-        Button("Debug Log") { openWindow(id: "debug-log") }
-            .keyboardShortcut("l", modifiers: [.command, .option])
-    }
-}

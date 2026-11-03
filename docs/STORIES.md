@@ -279,6 +279,7 @@ Acceptance:
 - [self] Installing a mod builds a profile with the mod's name, version and author, marked as a mod, on the native engine, with no update banner.
 - [snap] The install page shows the mod's name; the Play page shows the author.
 - [manual] A real community mod installs and plays.
+- [snap] The Mods page lists installed mods with Play, and the community mod list (gitlab.com/Miepee/AM2R-Mods) by group with Get; offline it says so with Try Again.
 Status: todo
 
 ## Later
