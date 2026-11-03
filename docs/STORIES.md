@@ -292,7 +292,7 @@ As the player with a PlayStation, Switch or other controller, I see that control
 Screens: play (Controller section)
 Depends: S-011
 Thimble: 97133751
-Notes: [Extras] Controller: 0 Xbox, 1 PlayStation, 2 Nintendo Pro, 3 Colored SNES, 4 MOGA, 5 OUYA (get_xjoybtnsprite). Automatic is a launcher choice kept on the profile: at Play it writes the set of the connected controller (GCController productCategory). Mods built on AM2R 1.1 ignore the key.
+Notes: Engine patch 0010 (2026-11-03): hints read `<array:0x…>` because the engine's builtin string_split replaced AM2R's own script of that name; a game script now wins over a same-named builtin. [Extras] Controller: 0 Xbox, 1 PlayStation, 2 Nintendo Pro, 3 Colored SNES, 4 MOGA, 5 OUYA (get_xjoybtnsprite). Automatic is a launcher choice kept on the profile: at Play it writes the set of the connected controller (GCController productCategory). Mods built on AM2R 1.1 ignore the key.
 UX:
 - Flow: Play page > Controller > Button Prompts: Automatic (default), Xbox, PlayStation, Nintendo, Colored SNES.
 - Words: "Button Prompts", "Automatic (<set>)" naming the set it would use now.

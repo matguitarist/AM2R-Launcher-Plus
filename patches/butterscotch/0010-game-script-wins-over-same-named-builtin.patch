@@ -1,0 +1,68 @@
+diff --git a/src/runner.c b/src/runner.c
+index a4feef1..986a0db 100644
+--- a/src/runner.c
++++ b/src/runner.c
+@@ -2684,7 +2684,7 @@ Runner* Runner_create(DataWin* dataWin, VMContext* vm, Renderer* renderer, FileS
+     repeat(shlen(vm->builtinMap), i) {
+         bool isRegistered = shgeti(vm->codeIndexByName, vm->builtinMap[i].key) != -1;
+         if (isRegistered) {
+-            logWarn("Runner: Builtin function %s has the same name as a GML script! The script may be a compatibility script provided by GM:S 2+, and the game may have issues due to the builtin overriding it!\n", vm->builtinMap[i].key);
++            logInfo("Runner: GML script %s replaces the builtin of the same name\n", vm->builtinMap[i].key);
+         }
+     }
+     }
+@@ -4114,7 +4114,9 @@ static void persistRoomState(Runner* runner, int32_t roomIndex) {
+         Instance* inst = runner->instances[i];
+         if (inst->persistent) {
+             arrput(keptInstances, inst);
+-        } else if (inst->active) {
++        } else if (!inst->destroyed) {
++            // Deactivated instances stay in the saved room, still deactivated, like GMS
++            // (AM2R deactivates everything off-screen; freeing them deleted walls on every pause).
+             arrput(state->instances, inst);
+         } else {
+             hmdel(runner->instancesById, inst->instanceId);
+@@ -5400,3 +5402,18 @@ void Runner_free(Runner* runner) {
+         free(runner->windowTitle);
+     free(runner);
+ }
++
++// GameMaker 1.4 handles display_reset() by recreating the graphics device once the frame is done, losing every surface
++// except the application surface. Games rely on it to rebuild surfaces at a new size: AM2R 1.5.5 creates its widescreen
++// view surface on the first frame (before its width is known) and only recreates it when surface_exists() turns false.
++void Runner_applyPendingDisplayReset(Runner* runner) {
++    if (!runner->pendingDisplayReset) return;
++    runner->pendingDisplayReset = false;
++    Renderer* renderer = runner->renderer;
++    if (renderer == nullptr || renderer->vtable->surfaceExists == nullptr || renderer->vtable->surfaceFree == nullptr) return;
++    for (int32_t id = 0; 4096 > id; id++) {
++        if (id == runner->applicationSurfaceId) continue;
++        if (renderer->vtable->surfaceExists(renderer, id)) renderer->vtable->surfaceFree(renderer, id);
++    }
++    logInfo("Runner: display_reset applied, surfaces lost\n");
++}
+diff --git a/src/vm.c b/src/vm.c
+index 862c28e..646b658 100644
+--- a/src/vm.c
++++ b/src/vm.c
+@@ -3617,14 +3617,13 @@ VMContext* VM_create(DataWin* dataWin) {
+     {
+     repeat(dataWin->func.functionCount, i) {
+         const char* name = dataWin->func.functions[i].name;
+-        BuiltinFunc builtin = VM_findBuiltin(ctx, name);
++        // A game script wins over a builtin of the same name: GameMaker forbids that clash within one
++        // version, so the script predates the builtin and the game expects its own behavior
++        // (AM2R's string_split(str, index, sep) returns one part, not the newer builtin's array).
++        ptrdiff_t mapIdx = shgeti(ctx->codeIndexByName, (char*) name);
++        BuiltinFunc builtin = (mapIdx >= 0) ? nullptr : VM_findBuiltin(ctx, name);
+         ctx->funcCallCache[i].builtin = (void*) builtin;
+-        if (builtin != nullptr) {
+-            ctx->funcCallCache[i].scriptCodeIndex = -1;
+-        } else {
+-            ptrdiff_t mapIdx = shgeti(ctx->codeIndexByName, (char*) name);
+-            ctx->funcCallCache[i].scriptCodeIndex = (mapIdx >= 0) ? ctx->codeIndexByName[mapIdx].value : -1;
+-        }
++        ctx->funcCallCache[i].scriptCodeIndex = (mapIdx >= 0) ? ctx->codeIndexByName[mapIdx].value : -1;
+     }
+     }
+ 
