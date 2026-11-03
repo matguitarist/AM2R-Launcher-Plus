@@ -44,7 +44,9 @@ struct PlayPage: View {
 
     var body: some View {
         Group {
-            if !model.forceWelcome, let profile = CurrentProfile.pick(profiles, selection: model.selection) {
+            if let install = model.install {
+                InstallPage(state: install)
+            } else if !model.forceWelcome, let profile = CurrentProfile.pick(profiles, selection: model.selection) {
                 VStack(spacing: Space.lg) {
                     Text(profile.name)
                         .font(.largeTitle.bold())

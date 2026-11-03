@@ -62,7 +62,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 /// Where the data lives: ~/Library/Application Support/AM2RLauncherPlus/AM2RLauncherPlus.store
-enum Store {
+nonisolated enum Store {
     /// True when APP_STORE points somewhere else (tests, snapshots, seed data).
     static var isOverridden: Bool {
         !(ProcessInfo.processInfo.environment["APP_STORE"] ?? "").isEmpty

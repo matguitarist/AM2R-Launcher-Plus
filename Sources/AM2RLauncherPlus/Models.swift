@@ -44,6 +44,9 @@ final class Profile {
         set { engineRaw = newValue.rawValue }
     }
 
+    /// The installed game files: <data folder>/Profiles/<uuid>.
+    var folder: URL { DataFolder.profiles.appending(path: uuid.uuidString, directoryHint: .isDirectory) }
+
     init(name: String, version: String) {
         self.name = name
         self.version = version
@@ -84,7 +87,7 @@ final class GameSource {
 }
 
 /// Where profiles, patch data, logs and caches live (S-013 makes it movable).
-enum DataFolder {
+nonisolated enum DataFolder {
     static var url: URL {
         let base = Store.isOverridden
             ? Store.url.deletingLastPathComponent().appending(path: Store.url.deletingPathExtension().lastPathComponent + "-data", directoryHint: .isDirectory)
@@ -94,6 +97,8 @@ enum DataFolder {
     }
 
     static var hashCache: URL { url.appending(path: "Caches/hashes.json") }
+    static var patchData: URL { url.appending(path: "PatchData", directoryHint: .isDirectory) }
+    static var profiles: URL { url.appending(path: "Profiles", directoryHint: .isDirectory) }
 }
 
 /// The welcome page's state while the player picks AM2R 1.1.
@@ -102,6 +107,30 @@ enum WelcomeState: Equatable {
     case checking(String)
     case failed(AM2R11.Problem, String)
     case ready
+}
+
+/// Progress of installing Community Updates (S-002 to S-004).
+struct InstallState: Equatable {
+    enum Step: Int, CaseIterable, Comparable {
+        case download, patch, copy
+
+        var title: String {
+            switch self {
+            case .download: "Downloading patch data"
+            case .patch: "Patching AM2R 1.1"
+            case .copy: "Copying game files"
+            }
+        }
+
+        static func < (a: Step, b: Step) -> Bool { a.rawValue < b.rawValue }
+    }
+
+    var step: Step = .download
+    var bytesDone = 0
+    var bytesTotal = 0
+    var failure: String?
+    /// Set when the profile is ready; the page shows it briefly, then Play.
+    var finishedName: String?
 }
 
 /// The sidebar pages. Snapshot mode walks through every case.
@@ -137,6 +166,8 @@ final class AppModel {
     }
 
     var welcome: WelcomeState = .empty
+    var install: InstallState?
+    private var installTask: Task<Void, Never>?
     /// Opens the file chooser for AM2R 1.1 (File > Choose AM2R 1.1…, ⌘O).
     var showChooser = false
     /// Snapshot mode shows the welcome page even when profiles exist.
@@ -171,11 +202,62 @@ final class AppModel {
         }
     }
 
+    /// Downloads the patch data, patches AM2R 1.1 and adds the new profile (S-002 to S-004).
+    func startInstall() {
+        guard let source, installTask == nil else { return }
+        install = InstallState()
+        let sourceURL = source.url, kind = AM2R11.Kind(rawValue: source.kindRaw) ?? .zip, root = source.root
+        let rosetta = source.hasWindowsGame
+        installTask = Task {
+            defer { installTask = nil }
+            do {
+                let manifest = try await PatchData.latestManifest(rosetta: rosetta)
+                install?.bytesTotal = manifest.totalSize
+                let patchFolder = try await PatchData.download(manifest, into: DataFolder.patchData) { done, total in
+                    Task { @MainActor in self.install?.bytesDone = done; self.install?.bytesTotal = total }
+                }
+                try Task.checkCancellation()
+                install?.step = .patch
+                let uuid = UUID()
+                let destination = DataFolder.profiles.appending(path: uuid.uuidString, directoryHint: .isDirectory)
+                let result = try await Task.detached(priority: .userInitiated) {
+                    try ProfileBuilder.build(source: sourceURL, kind: kind, root: root, patchData: patchFolder, destination: destination) { step in
+                        if step == .copy { Task { @MainActor in self.install?.step = .copy } }
+                    }
+                }.value
+                let profile = addProfile(name: "Community Updates \(result.info.version)", version: result.info.version)
+                profile.uuid = uuid
+                profile.patchCommit = manifest.commit
+                try? container.mainContext.save()
+                install?.finishedName = profile.name
+                try? await Task.sleep(for: .seconds(1))
+                install = nil
+                sidebar = .play
+            } catch is CancellationError {
+                install = nil
+            } catch let failure as PatchData.Failure {
+                install?.failure = failure.message
+            } catch let failure as ProfileBuilder.Failure {
+                install?.failure = failure.message
+            } catch {
+                install?.failure = "Unable to install: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    /// Stops an install; partial files are removed or reused by the next try.
+    func cancelInstall() {
+        installTask?.cancel()
+        if install?.failure != nil { install = nil }
+    }
+
     /// Records an installed profile and selects it. The install itself (S-002 to S-004) calls this when done.
     @discardableResult
     func addProfile(name: String, version: String) -> Profile {
         let profile = Profile(name: ProfileName.clean(name), version: version)
         container.mainContext.insert(profile)
+        // Saving first gives the profile its permanent id; a temporary one would leave the selection dangling.
+        try? container.mainContext.save()
         selection = profile.id
         return profile
     }

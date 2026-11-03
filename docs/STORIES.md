@@ -45,7 +45,7 @@ UX:
 - States: loading: determinate bar for the download ("Downloading patch data — 18 of 31 MB"); error inline under the failed step: "Unable to reach GitHub. Check your connection, then try again." with Try Again; cached data skips the step with "Using downloaded patch data (1.5.5)".
 - Words: "Cancel", "Try Again".
 - Access: progress bar has label and value; step changes announced; Escape = Cancel.
-Status: todo
+Status: done
 
 ### S-003 Patch 1.1 into 1.5.5
 As the player, the app turns my 1.1 into the 1.5.5 game files without any other tool installed.
@@ -62,7 +62,7 @@ UX:
 - States: loading indeterminate (a few seconds); error: "Patching failed. The patch data doesn't match this copy of AM2R 1.1." with Try Again and Show Log.
 - Words: "Patching AM2R 1.1".
 - Access: as S-002.
-Status: todo
+Status: done
 
 ### S-004 Build a playable profile
 As the player, the patched files become a profile folder I can play.
@@ -81,7 +81,7 @@ UX:
 - States: done: success line for one second, then Play page; error: "Unable to copy game files. There may not be enough space in the data folder." with Show Data Folder.
 - Words: profile default name "Community Updates 1.5.5".
 - Access: focus moves to Play; VoiceOver announces "Community Updates 1.5.5 is ready".
-Status: todo
+Status: done
 
 ### S-005 Play natively
 As the player, I click Play and AM2R starts natively on Apple Silicon.

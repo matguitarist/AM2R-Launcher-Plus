@@ -72,12 +72,10 @@ struct WelcomePage: View {
         switch model.welcome {
         case .ready:
             VStack(spacing: Space.sm) {
-                // Install runs with S-002 to S-004.
-                Button("Install Community Updates") {}
+                Button("Install Community Updates") { model.startInstall() }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
                     .keyboardShortcut(.defaultAction)
-                    .disabled(true)
                 Button("Choose Another…") { model.showChooser = true }
                     .buttonStyle(.link)
             }

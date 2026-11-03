@@ -1,3 +1,4 @@
+import AM2RLauncherPlusKit
 import AppKit
 import IOKit.pwr_mgt
 import SwiftUI
@@ -58,6 +59,22 @@ enum Snapshot {
             }
             model.forceWelcome = false
             model.welcome = savedWelcome
+            // Install states (S-002 to S-004): install-progress, install-error.
+            var downloading = InstallState()
+            downloading.bytesDone = 18_400_000
+            downloading.bytesTotal = 36_300_000
+            var failed = InstallState()
+            failed.failure = PatchData.Failure.offline.message
+            for (name, state) in [("install-progress", downloading), ("install-error", failed)] where only?.contains(name) ?? true {
+                model.sidebar = .play
+                model.install = state
+                for mode in ["light", "dark"] {
+                    NSApp.appearance = NSAppearance(named: mode == "light" ? .aqua : .darkAqua)
+                    try? await Task.sleep(for: .seconds(0.8))
+                    capture(to: "\(dir)/\(name)-\(mode).png")
+                }
+            }
+            model.install = nil
             if only == nil || only?.contains("settings") == true {
                 let main = NSApp.windows.first { $0.canBecomeMain && !$0.isSheet }
                 openSettings()

@@ -1,3 +1,4 @@
+import AM2RLauncherPlusKit
 import AppKit
 import SwiftData
 
@@ -51,6 +52,31 @@ enum SelfTest {
                 check("AM2R.exe is recognized for Rosetta", model.source?.hasWindowsGame == true)
                 let reopened = AppModel(container: model.container)
                 check("the copy is still chosen after a restart", reopened.welcome == .ready && reopened.source?.path == real)
+
+                // S-002 to S-004: a real install (network). APP_SELFTEST_INSTALL=1 runs it.
+                if ProcessInfo.processInfo.environment["APP_SELFTEST_INSTALL"] == "1" {
+                    let profilesBefore = profiles().count
+                    model.startInstall()
+                    check("install starts with the download step", model.install?.step == .download)
+                    var sawPatch = false
+                    for _ in 0..<1200 where model.install != nil && model.install?.failure == nil {
+                        if model.install?.step == .patch || model.install?.step == .copy { sawPatch = true }
+                        try? await Task.sleep(for: .milliseconds(100))
+                    }
+                    check("install finishes without an error", model.install == nil, model.install?.failure ?? "still running")
+                    check("install went through patching", sawPatch)
+                    let installed = profiles().first { $0.id == model.selection }
+                    check("the new profile is added and selected", profiles().count == profilesBefore + 1 && installed != nil)
+                    check("the profile is named after its version", installed?.name == "Community Updates 1.5.5", installed?.name ?? "none")
+                    if let installed {
+                        let gameIOS = installed.folder.appending(path: "game.ios")
+                        check("game.ios is Community Updates 1.5.5", AM2R11.md5(of: gameIOS) == "0de029951c94b04545c9c257053ad712")
+                        check("the patch commit is recorded", installed.patchCommit.count == 40)
+                        try? FileManager.default.removeItem(at: installed.folder)
+                        context.delete(installed)
+                        try? context.save()
+                    }
+                }
             }
 
             print(failures == 0 ? "SELFTEST PASS \(count) checks" : "SELFTEST FAIL \(failures) of \(count) checks")
