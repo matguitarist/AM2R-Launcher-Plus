@@ -85,6 +85,25 @@ enum Snapshot {
                 }
                 model.previewPlaying = false
             }
+            // S-023: saves-backups, the Saves Backups sheet with two backups.
+            if let profile = model.currentProfile, only?.contains("saves-backups") ?? true {
+                let saves = GameRunner.saveFolder(for: profile)
+                try? FileManager.default.createDirectory(at: saves, withIntermediateDirectories: true)
+                try? Data("slot 1".utf8).write(to: saves.appending(path: "save1"))
+                let folder = DataFolder.backups(for: profile.uuid)
+                _ = try? SaveBackup.backup(saves: saves, into: folder, profileName: profile.name, date: .now.addingTimeInterval(-7 * 86_400))
+                _ = try? SaveBackup.backup(saves: saves, into: folder, profileName: profile.name, label: "before restore")
+                model.sidebar = .profiles
+                for mode in ["light", "dark"] {
+                    NSApp.appearance = NSAppearance(named: mode == "light" ? .aqua : .darkAqua)
+                    model.backupsFor = profile
+                    try? await Task.sleep(for: .seconds(1))
+                    let main = NSApp.windows.first { $0.canBecomeMain && !$0.isSheet }
+                    capture(to: "\(dir)/saves-backups-\(mode).png", window: main?.attachedSheet)
+                    model.backupsFor = nil
+                    try? await Task.sleep(for: .seconds(0.5))
+                }
+            }
             // S-022: the delete dialog on the Profiles page.
             if let profile = model.currentProfile, only?.contains("profiles-delete") ?? true {
                 model.sidebar = .profiles

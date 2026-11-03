@@ -40,7 +40,7 @@ struct AM2RLauncherPlusApp: App {
             }
             CommandMenu("Profile") {
                 let profile = model.currentProfile
-                let off = profile == nil || model.renameTarget != nil || model.install != nil
+                let off = profile == nil || model.renameTarget != nil || model.install != nil || model.backupsFor != nil
                 Button("Rename…") { model.renameTarget = profile }
                     .keyboardShortcut("r")
                     .disabled(off)
@@ -49,6 +49,13 @@ struct AM2RLauncherPlusApp: App {
                     .disabled(off || model.duplicating)
                 Button("Show in Finder") { if let profile { model.reveal(profile) } }
                     .keyboardShortcut("r", modifiers: [.command, .option])
+                    .disabled(off)
+                Divider()
+                Button("Back Up Saves") { if let profile { model.startBackup(profile) } }
+                    .keyboardShortcut("b")
+                    .disabled(off || model.backingUp)
+                Button("Saves Backups…") { model.backupsFor = profile }
+                    .keyboardShortcut("b", modifiers: [.command, .shift])
                     .disabled(off)
                 Divider()
                 Button("Delete…") { model.deleteTarget = profile }

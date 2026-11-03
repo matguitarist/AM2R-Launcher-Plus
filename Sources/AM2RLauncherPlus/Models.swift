@@ -152,6 +152,10 @@ nonisolated enum DataFolder {
     }
 
     static var hashCache: URL { url.appending(path: "Caches/hashes.json") }
+    /// Save backups of one profile (S-023): <data folder>/Backups/<profile uuid>.
+    static func backups(for profile: UUID) -> URL {
+        url.appending(path: "Backups/\(profile.uuidString)", directoryHint: .isDirectory)
+    }
     /// Saves kept when a profile is deleted (S-022).
     static var keptSaves: URL { url.appending(path: "Kept Saves", directoryHint: .isDirectory) }
     /// The last update check (S-020).
@@ -284,6 +288,11 @@ final class AppModel {
     var keptSaves: (name: String, folder: URL)?
     var duplicating = false
     var profileActionError: String?
+    /// The profile whose Saves Backups sheet is open (S-023), and what it's doing.
+    var backupsFor: Profile?
+    var backingUp = false
+    var backupMessage: String?
+    var backupError: String?
 
     init(container: ModelContainer) {
         self.container = container
@@ -485,6 +494,59 @@ final class AppModel {
         try? container.mainContext.save()
     }
 
+    // MARK: Save backups (S-023)
+
+    /// Profile > Back Up Saves (⌘B): opens the Saves Backups sheet and makes a backup there.
+    func startBackup(_ profile: Profile) {
+        backupsFor = profile
+        Task { _ = await backUpSaves(profile) }
+    }
+
+    /// Zips the profile's save folder into its backups folder.
+    @discardableResult
+    func backUpSaves(_ profile: Profile, label: String? = nil) async -> URL? {
+        guard !backingUp else { return nil }
+        backingUp = true
+        defer { backingUp = false }
+        backupError = nil
+        backupMessage = nil
+        let saves = GameRunner.saveFolder(for: profile), folder = DataFolder.backups(for: profile.uuid), name = profile.name
+        let result = await Task.detached(priority: .userInitiated) { () -> Result<URL, SaveBackup.Failure> in
+            Result { () throws(SaveBackup.Failure) in try SaveBackup.backup(saves: saves, into: folder, profileName: name, label: label) }
+        }.value
+        switch result {
+        case .success(let zip):
+            if label == nil { backupMessage = "Backed up as \(zip.deletingPathExtension().lastPathComponent)." }
+            return zip
+        case .failure(let failure):
+            backupError = failure.message
+            return nil
+        }
+    }
+
+    /// Puts a backup back. The current saves are backed up first ("before restore"), so a restore can be undone.
+    @discardableResult
+    func restoreSaves(_ profile: Profile, from zip: URL) async -> Bool {
+        guard game?.profileID != profile.uuid, !backingUp else { return false }
+        let saves = GameRunner.saveFolder(for: profile)
+        let hasSaves = !(((try? FileManager.default.contentsOfDirectory(atPath: saves.path)) ?? []).filter { !$0.hasPrefix(".") }.isEmpty)
+        if hasSaves, await backUpSaves(profile, label: "before restore") == nil { return false }
+        backingUp = true
+        defer { backingUp = false }
+        let result = await Task.detached(priority: .userInitiated) { () -> Result<Void, SaveBackup.Failure> in
+            Result { () throws(SaveBackup.Failure) in try SaveBackup.restore(zip, into: saves) }
+        }.value
+        switch result {
+        case .success:
+            backupMessage = "Restored \(zip.deletingPathExtension().lastPathComponent)."
+                + (hasSaves ? " The saves from before are in the list, marked “before restore”." : "")
+            return true
+        case .failure(let failure):
+            backupError = failure.message
+            return false
+        }
+    }
+
     /// Profile > Duplicate and the Profiles page.
     func startDuplicate(_ profile: Profile) {
         Task { _ = await duplicate(profile) }
@@ -554,6 +616,9 @@ final class AppModel {
                 try fm.createDirectory(at: DataFolder.keptSaves, withIntermediateDirectories: true)
                 if fm.fileExists(atPath: kept.path) { try fm.removeItem(at: kept) }
                 try fm.moveItem(at: saves, to: kept)
+                // Backups go with the kept saves.
+                let backups = DataFolder.backups(for: profile.uuid)
+                if fm.fileExists(atPath: backups.path) { try? fm.moveItem(at: backups, to: kept.appending(path: "Backups", directoryHint: .isDirectory)) }
                 keptSaves = (profile.name, kept)
             } catch {
                 profileActionError = "Unable to keep the saves of \(profile.name): \(error.localizedDescription). Nothing was deleted."
@@ -561,6 +626,7 @@ final class AppModel {
             }
         } else {
             try? fm.removeItem(at: saves)
+            try? fm.removeItem(at: DataFolder.backups(for: profile.uuid))
         }
         try? fm.removeItem(at: profile.folder)
         try? fm.removeItem(at: GameRunner.logFolder(for: profile))

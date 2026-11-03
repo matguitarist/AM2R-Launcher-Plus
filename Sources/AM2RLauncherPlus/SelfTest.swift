@@ -142,6 +142,29 @@ enum SelfTest {
                 model.keptSaves = nil
             }
 
+            // S-023: back up and restore saves.
+            do {
+                let fm = FileManager.default
+                let backed = model.addProfile(name: "Backed", version: "1.5.5")
+                let saves = GameRunner.saveFolder(for: backed)
+                try? fm.createDirectory(at: saves, withIntermediateDirectories: true)
+                try? Data("slot 1".utf8).write(to: saves.appending(path: "save1"))
+                let zip = await model.backUpSaves(backed)
+                check("Back Up Saves zips the save folder", zip.map { fm.fileExists(atPath: $0.path) } == true, model.backupError ?? "")
+                try? Data("slot 1 later".utf8).write(to: saves.appending(path: "save1"))
+                if let zip {
+                    let restored = await model.restoreSaves(backed, from: zip)
+                    check("Restore puts the backup back", restored && (try? String(contentsOf: saves.appending(path: "save1"), encoding: .utf8)) == "slot 1",
+                          model.backupError ?? "")
+                    let list = SaveBackup.list(in: DataFolder.backups(for: backed.uuid))
+                    check("Restore backs up the current saves first", list.count == 2 && list.contains { $0.name.hasSuffix("(before restore)") })
+                }
+                let backups = DataFolder.backups(for: backed.uuid)
+                model.delete(backed, keepSaves: false)
+                check("deleting a profile with its saves removes its backups", !fm.fileExists(atPath: backups.path))
+                model.backupMessage = nil
+            }
+
             // S-020: the banner shows only for a profile built from older patch data.
             do {
                 let old = model.addProfile(name: "Old", version: "1.5.5")

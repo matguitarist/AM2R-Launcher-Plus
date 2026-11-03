@@ -279,6 +279,9 @@ struct ProfileActions: View {
             .disabled(model.duplicating)
         Button("Show in Finder") { model.reveal(profile) }
         Divider()
+        Button("Back Up Saves") { model.startBackup(profile) }
+        Button("Saves Backups…") { model.backupsFor = profile }
+        Divider()
         Button("Delete…", role: .destructive) { model.deleteTarget = profile }
             .disabled(busy)
     }
@@ -299,6 +302,9 @@ struct ProfileDialogs: ViewModifier {
                 Button("Cancel", role: .cancel) {}
             }
             .onChange(of: model.renameTarget?.uuid) { newName = model.renameTarget?.name ?? "" }
+            .sheet(item: $model.backupsFor, onDismiss: { model.backupMessage = nil; model.backupError = nil }) { profile in
+                BackupsSheet(profile: profile)
+            }
             .confirmationDialog(model.deleteTarget.map { "Delete \($0.name)?" } ?? "",
                                 isPresented: Binding(get: { model.deleteTarget != nil }, set: { if !$0 { model.deleteTarget = nil } })) {
                 Button("Delete, Keep Saves") { if let profile = model.deleteTarget { model.delete(profile, keepSaves: true) } }

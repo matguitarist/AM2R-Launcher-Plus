@@ -226,12 +226,12 @@ Status: done
 
 ### S-023 Back up and restore saves
 As the player, I back up a profile's saves and restore one later.
-Screens: profiles
+Screens: saves-backups
 Depends: S-022
 Thimble: 376bee82
 Acceptance:
 - [unit] Backup zips the save folder with a date; restore asks before replacing.
-Status: todo
+Status: done
 
 ## M4 Polish (0.3.0)
 
