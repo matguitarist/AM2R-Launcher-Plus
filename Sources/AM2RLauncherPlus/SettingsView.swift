@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// The Settings window (Command-Comma). One tab per topic, at most about
@@ -55,9 +56,38 @@ enum SettingsTab: String, CaseIterable, Identifiable {
 
 struct GeneralSettings: View {
     var body: some View {
-        // Engine (S-007) and data folder (S-013) arrive here.
+        // Data folder (S-013) arrives here.
         Section("Engine") {
-            LabeledContent("Engine", value: Engine.native.title)
+            if let version = EngineInfo.version {
+                LabeledContent("Native", value: "Butterscotch \(version.prefix(7))")
+                    .textSelection(.enabled)
+                LabeledContent("Source") {
+                    Link("Source Code (AGPL-3.0)", destination: URL(string: "https://github.com/ButterscotchRunner/Butterscotch/tree/\(version)")!)
+                        .help("Open the engine's source on GitHub. Our patch ships inside the app.")
+                }
+                LabeledContent("Patches") {
+                    Button("Show in Finder") { EngineInfo.revealFiles() }
+                        .help("Show the engine's license and the AM2R patch bundled with this app")
+                }
+            } else {
+                Text("Native engine not found. Use Rosetta, or reinstall the app.")
+                    .foregroundStyle(.secondary)
+            }
         }
+    }
+}
+
+/// The bundled engine (S-007): Contents/Resources/Engine holds its license, VERSION and our patch.
+enum EngineInfo {
+    static var folder: URL { Bundle.main.bundleURL.appending(path: "Contents/Resources/Engine", directoryHint: .isDirectory) }
+
+    /// The upstream Butterscotch commit, from VERSION ("<commit> <patch hash>").
+    static var version: String? {
+        guard GameRunner.engine != nil, let text = try? String(contentsOf: folder.appending(path: "VERSION"), encoding: .utf8) else { return nil }
+        return text.split(separator: " ").first.map(String.init)
+    }
+
+    static func revealFiles() {
+        NSWorkspace.shared.activateFileViewerSelecting([folder.appending(path: "butterscotch-am2r.patch")])
     }
 }

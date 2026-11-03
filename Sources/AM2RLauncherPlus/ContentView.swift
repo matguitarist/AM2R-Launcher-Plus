@@ -52,15 +52,21 @@ struct PlayPage: View {
                         .font(.largeTitle.bold())
                     HStack(spacing: Space.sm) {
                         Text("Version \(profile.version)")
-                        Text(profile.engine.title)
+                        Text("·")
+                        Label(profile.engine.title, systemImage: "cpu")
                             .help(profile.engine.help)
                     }
                     .foregroundStyle(.secondary)
-                    // Play arrives with S-005.
-                    Button("Play", systemImage: "play.fill") {}
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.extraLarge)
-                        .disabled(true)
+                    playControls
+                    if let summary = PlayStats.summary(lastPlayed: profile.lastPlayedAt, playTime: profile.playTime) {
+                        Text(summary)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
+                    if let error = model.playError {
+                        Label(error, systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                    }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -68,6 +74,45 @@ struct PlayPage: View {
             }
         }
         .navigationTitle("Play")
+    }
+}
+
+extension PlayPage {
+    @ViewBuilder var playControls: some View {
+        @Bindable var model = model
+        if model.isPlaying {
+            HStack(spacing: Space.md) {
+                Button("Playing…", systemImage: "gamecontroller.fill") {}
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.extraLarge)
+                    .disabled(true)
+                Button("Stop") { model.confirmStop = true }
+                    .controlSize(.extraLarge)
+                    .help("Stop the game (⌘.)")
+            }
+            .confirmationDialog("Stop AM2R?", isPresented: $model.confirmStop) {
+                Button("Stop", role: .destructive) { model.stopGame() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Unsaved progress will be lost.")
+            }
+        } else {
+            Button("Play", systemImage: "play.fill") { model.play() }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.extraLarge)
+                .keyboardShortcut(.defaultAction)
+                .help("Start AM2R (⌘P)")
+        }
+    }
+}
+
+/// "Last played 1 hour ago · 2 h 14 min total"
+enum PlayStats {
+    static func summary(lastPlayed: Date?, playTime: Double) -> String? {
+        guard let lastPlayed else { return nil }
+        let ago = lastPlayed.formatted(.relative(presentation: .named).locale(.app))
+        let total = Duration.seconds(playTime).formatted(.units(allowed: [.hours, .minutes], width: .abbreviated).locale(.app))
+        return "Last played \(ago) · \(total) total"
     }
 }
 
@@ -94,4 +139,10 @@ struct ProfilesPage: View {
         }
         .navigationTitle("Profiles")
     }
+}
+
+extension Locale {
+    /// The language the app's text is in, so numbers and dates match the words around them.
+    /// Becomes the person's language once the launcher is localized (S-030 and later).
+    static var app: Locale { Locale(identifier: Bundle.main.preferredLocalizations.first ?? "en") }
 }

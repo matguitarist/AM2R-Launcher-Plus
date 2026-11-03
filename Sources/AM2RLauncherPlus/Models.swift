@@ -167,6 +167,16 @@ final class AppModel {
 
     var welcome: WelcomeState = .empty
     var install: InstallState?
+    /// The running game, if any (S-005).
+    var game: GameRunner?
+    /// Set when the game quit with an error (S-006 shows it with the log).
+    var lastGameFailure: (profile: UUID, log: URL)?
+    var playError: String?
+    /// Asks before stopping a running game.
+    var confirmStop = false
+    /// Snapshot mode shows the "Playing…" state without starting the game.
+    var previewPlaying = false
+    var isPlaying: Bool { game != nil || previewPlaying }
     private var installTask: Task<Void, Never>?
     /// Opens the file chooser for AM2R 1.1 (File > Choose AM2R 1.1…, ⌘O).
     var showChooser = false
@@ -249,6 +259,44 @@ final class AppModel {
     func cancelInstall() {
         installTask?.cancel()
         if install?.failure != nil { install = nil }
+    }
+
+    /// The selected profile, or the most recently installed one.
+    var currentProfile: Profile? {
+        let all = (try? container.mainContext.fetch(FetchDescriptor<Profile>(sortBy: [SortDescriptor(\.installedAt, order: .reverse)]))) ?? []
+        return all.first { $0.id == selection } ?? all.first
+    }
+
+    /// Plays the current profile on the native engine (S-005).
+    func play(extraArguments: [String] = []) {
+        guard game == nil, let profile = currentProfile else { return }
+        playError = nil
+        lastGameFailure = nil
+        do {
+            game = try GameRunner(profile: profile, extraArguments: extraArguments) { [weak self] status in
+                self?.gameEnded(status: status)
+            }
+        } catch {
+            playError = error.message
+        }
+    }
+
+    func stopGame() {
+        game?.stop()
+    }
+
+    private func gameEnded(status: Int32) {
+        guard let game else { return }
+        let profiles = (try? container.mainContext.fetch(FetchDescriptor<Profile>())) ?? []
+        if let profile = profiles.first(where: { $0.uuid == game.profileID }) {
+            profile.playTime += Date.now.timeIntervalSince(game.startedAt)
+            profile.lastPlayedAt = .now
+            try? container.mainContext.save()
+        }
+        if status != 0 && !game.stoppedByUser {
+            lastGameFailure = (game.profileID, game.log)
+        }
+        self.game = nil
     }
 
     /// Records an installed profile and selects it. The install itself (S-002 to S-004) calls this when done.

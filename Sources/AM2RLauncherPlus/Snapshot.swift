@@ -75,6 +75,16 @@ enum Snapshot {
                 }
             }
             model.install = nil
+            if only?.contains("play-running") ?? true {
+                model.sidebar = .play
+                model.previewPlaying = true
+                for mode in ["light", "dark"] {
+                    NSApp.appearance = NSAppearance(named: mode == "light" ? .aqua : .darkAqua)
+                    try? await Task.sleep(for: .seconds(0.8))
+                    capture(to: "\(dir)/play-running-\(mode).png")
+                }
+                model.previewPlaying = false
+            }
             if only == nil || only?.contains("settings") == true {
                 let main = NSApp.windows.first { $0.canBecomeMain && !$0.isSheet }
                 openSettings()

@@ -72,6 +72,32 @@ enum SelfTest {
                         let gameIOS = installed.folder.appending(path: "game.ios")
                         check("game.ios is Community Updates 1.5.5", AM2R11.md5(of: gameIOS) == "0de029951c94b04545c9c257053ad712")
                         check("the patch commit is recorded", installed.patchCommit.count == 40)
+
+                        // S-005: play on the bundled engine (headless, so no window opens).
+                        check("the native engine is bundled", GameRunner.engine != nil)
+                        model.play(extraArguments: ["--headless", "--exit-at-frame", "120"])
+                        check("Play starts the game", model.game != nil, model.playError ?? "")
+                        for _ in 0..<300 where model.game != nil { try? await Task.sleep(for: .milliseconds(100)) }
+                        check("the game ends on its own", model.game == nil)
+                        check("a clean exit isn't reported as a failure", model.lastGameFailure == nil)
+                        check("play time and last played are recorded", installed.playTime > 0 && installed.lastPlayedAt != nil)
+                        let logs = (try? FileManager.default.contentsOfDirectory(at: GameRunner.logFolder(for: installed), includingPropertiesForKeys: nil)) ?? []
+                        let logText = logs.first.flatMap { try? String(contentsOf: $0, encoding: .utf8) } ?? ""
+                        check("the game log is written", logText.contains("Loaded \"AM2R\""), "\(logs.count) logs")
+                        check("saves go to the profile's save folder", FileManager.default.fileExists(atPath: GameRunner.saveFolder(for: installed).path))
+
+                        model.play() // windowed for two seconds: headless AM2R quits by itself
+                        try? await Task.sleep(for: .seconds(2))
+                        check("the game is still running before Stop", model.game?.isRunning == true)
+                        model.stopGame()
+                        for _ in 0..<100 where model.game != nil { try? await Task.sleep(for: .milliseconds(100)) }
+                        check("Stop ends the game", model.game == nil)
+                        check("stopping isn't reported as a failure", model.lastGameFailure == nil)
+                        for _ in 0..<6 { GameRunner.pruneLogs(in: GameRunner.logFolder(for: installed), keep: 4) }
+                        let kept = (try? FileManager.default.contentsOfDirectory(atPath: GameRunner.logFolder(for: installed).path))?.count ?? 0
+                        check("at most five logs are kept", kept <= 5)
+                        try? FileManager.default.removeItem(at: GameRunner.saveFolder(for: installed).deletingLastPathComponent())
+                        try? FileManager.default.removeItem(at: GameRunner.logFolder(for: installed).deletingLastPathComponent())
                         try? FileManager.default.removeItem(at: installed.folder)
                         context.delete(installed)
                         try? context.save()

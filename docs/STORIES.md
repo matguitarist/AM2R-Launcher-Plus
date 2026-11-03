@@ -100,7 +100,7 @@ UX:
 - States: empty (no profile): Play page shows the welcome page instead; running: "Playing…" + Stop; done: "Last played just now · 2 h 14 min total".
 - Words: "Play", "Playing…", "Stop", tooltip on engine badge "Runs natively on Apple silicon".
 - Access: Play is the default button; Stop has ⌘.; badge has text, not just color.
-Status: todo
+Status: doing
 
 ### S-006 See why the game stopped
 As the player, if the game quits with an error I can read the log.
@@ -123,9 +123,9 @@ As the player, I never install Butterscotch myself: it ships inside the app.
 Screens: settings-general
 Thimble: 61e37b37
 Acceptance:
-- [unit] `tools/build-butterscotch.sh` clones Butterscotch at a pinned commit, applies
-  `patches/butterscotch/all-current.patch`, builds arm64 Release, and copies it to
-  `Contents/Helpers/butterscotch`.
+- [unit] `tools/build-butterscotch.sh` clones Butterscotch at the commit in `Engine/BUTTERSCOTCH_COMMIT`,
+  applies `patches/butterscotch/all-current.patch`, builds arm64 Release; `build.sh` bundles it as the
+  helper app `Contents/Helpers/AM2R.app` (games category, Game Mode) with its license and patch.
 - [snap] Settings › General shows the engine version and a "Source code (AGPL-3.0)" link.
 UX:
 - Flow: Settings (⌘,) › General -> "Engine" section: "Native (Butterscotch <commit>)", "Source Code (AGPL-3.0)" link opens the bundled source/patches page.
@@ -133,7 +133,7 @@ UX:
 - States: engine missing from the bundle (dev builds): "Native engine not found. Use Rosetta, or reinstall the app." inline.
 - Words: "Engine", "Native", "Source Code (AGPL-3.0)".
 - Access: link is a real button with label; all text selectable.
-Status: todo
+Status: done
 
 ## M2 Tune the game (0.1.0)
 

@@ -17,7 +17,8 @@ config=release
 # Settings > Accounts). Otherwise sign ad hoc, which is fine for your own Mac.
 identity="${SIGN_IDENTITY:-}"
 if [[ -z "$identity" ]]; then
-  identity=$(security find-identity -v -p codesigning 2>/dev/null | grep -m1 -o '"Apple Development: [^"]*"' | tr -d '"' || true)
+  # Sign by fingerprint: two certificates with the same name make the name ambiguous.
+  identity=$(security find-identity -v -p codesigning 2>/dev/null | grep -m1 '"Apple Development: ' | awk '{print $2}' || true)
 fi
 [[ -n "$identity" ]] || identity=-
 
@@ -46,7 +47,20 @@ if [[ -d "$here/Icon/AppIcon.icon" ]]; then
   fi
   cp -X "$car" "$here/Resources/AppIcon.icns" "$app/Contents/Resources/"
 fi
+# The game engine: Butterscotch (AGPL-3.0) as the helper app AM2R.app, with its source pointers (S-007).
+"$here/tools/build-butterscotch.sh"
+engine="$HOME/Library/Developer/$name/engine"
+helper="$app/Contents/Helpers/AM2R.app"
+mkdir -p "$helper/Contents/MacOS" "$helper/Contents/Resources" "$app/Contents/Resources/Engine"
+cp "$engine/butterscotch" "$helper/Contents/MacOS/butterscotch"
+cp "$here/Engine/Info.plist" "$helper/Contents/Info.plist"
+[[ -f "$here/Resources/AppIcon.icns" ]] && cp -X "$here/Resources/AppIcon.icns" "$helper/Contents/Resources/"
+cp "$engine/LICENSE" "$app/Contents/Resources/Engine/LICENSE"
+cp "$engine/VERSION" "$app/Contents/Resources/Engine/VERSION"
+cp "$here/patches/butterscotch/all-current.patch" "$app/Contents/Resources/Engine/butterscotch-am2r.patch"
+cp "$here/Engine/README.md" "$app/Contents/Resources/Engine/README.md"
 xattr -cr "$app"
+codesign --force --sign "$identity" "$helper" 2>&1 | grep -v "replacing existing signature" || true
 codesign --force --sign "$identity" "$app" 2>&1 | grep -v "replacing existing signature" || true
 echo "installed $app (signed: ${identity})"
 

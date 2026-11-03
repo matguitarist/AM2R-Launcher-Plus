@@ -30,10 +30,17 @@ struct AM2RLauncherPlusApp: App {
         .commands {
             SidebarCommands()
             ToolbarCommands()
-            // Play (⌘P) arrives with S-005.
             CommandGroup(replacing: .newItem) {
                 Button("Choose AM2R 1.1…") { model.showChooser = true }
                     .keyboardShortcut("o")
+            }
+            CommandMenu("Game") {
+                Button("Play") { model.play() }
+                    .keyboardShortcut("p")
+                    .disabled(model.game != nil || model.currentProfile == nil)
+                Button("Stop") { model.confirmStop = true; model.sidebar = .play }
+                    .keyboardShortcut(".")
+                    .disabled(model.game == nil)
             }
         }
 

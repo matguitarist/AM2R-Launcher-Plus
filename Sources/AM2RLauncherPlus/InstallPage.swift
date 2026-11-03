@@ -96,6 +96,6 @@ struct InstallPage: View {
     }
 
     private func megabytes(_ bytes: Int) -> String {
-        bytes.formatted(.byteCount(style: .file))
+        bytes.formatted(.byteCount(style: .file).locale(.app))
     }
 }
