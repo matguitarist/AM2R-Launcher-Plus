@@ -9,3 +9,4 @@ The numbered files are per-change views and overlap: 0003 repeats the 0002 appki
 - 0004 sprite_add, sprite_replace, background_add from image files (1.5 palettes in mods/palettes)
 - 0005 display_reset loses all surfaces after the frame, like GMS 1.4 (1.5.5 widescreen surface; 0005 lists runner.c/loop.c, the runner.h + vm_builtins.c parts are in all-current.patch)
 - 0006 AppKit: BUTTERSCOTCH_GAMEPAD_KEYS="32778=27" makes a controller button also press a key (AM2R opens its pause menu only from Escape). 0006 is the whole appkit.m diff, so it repeats 0002.
+- 0007 AppKit: BUTTERSCOTCH_FILTER=scanlines|crt redraws each finished frame through a GLSL filter (BUTTERSCOTCH_FILTER_LINES = game height, 240), and links OpenGL.framework. 0007 is the whole appkit.m + CMakeLists diff, so it repeats 0002 and 0006.

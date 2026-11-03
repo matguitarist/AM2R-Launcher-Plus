@@ -23,6 +23,10 @@ struct GameSettingsView: View {
                         }
                     }
                     Toggle("Widescreen", isOn: $settings.widescreen)
+                    Picker("Filter", selection: Bindable(profile).displayFilter) {
+                        ForEach(DisplayFilter.allCases, id: \.self) { Text($0.title).tag($0) }
+                    }
+                    .help("Draw scanlines or an old CRT screen over the game")
                 } header: {
                     Text("Display")
                 } footer: {

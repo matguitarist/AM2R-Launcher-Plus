@@ -1,8 +1,29 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 9643079..7c39ca3 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -576,7 +576,7 @@ if(PLATFORM STREQUAL "cli" OR PLATFORM STREQUAL "vita" OR PLATFORM STREQUAL "swi
+     elseif(BACKEND STREQUAL "appkit")
+         add_compile_definitions(USE_APPKIT)
+         target_compile_definitions(butterscotch PRIVATE GL_SILENCE_DEPRECATION)
+-        set(BACKEND_LIBRARIES "-framework Cocoa" "-framework GameController")
++        set(BACKEND_LIBRARIES "-framework Cocoa" "-framework GameController" "-framework OpenGL")
+     elseif(BACKEND STREQUAL "noop")
+         if(NOT ENABLE_NOOP_RENDERER)
+             message(FATAL_ERROR "BACKEND=noop requires ENABLE_NOOP_RENDERER=ON")
 diff --git a/src/backends/appkit.m b/src/backends/appkit.m
-index 9623eb1..7ca1beb 100644
+index 9623eb1..1189469 100644
 --- a/src/backends/appkit.m
 +++ b/src/backends/appkit.m
-@@ -19,6 +19,47 @@
+@@ -5,6 +5,7 @@
+ #import <Cocoa/Cocoa.h>
+ #import <GameController/GameController.h>
+ #include <dlfcn.h>
++#import <OpenGL/gl.h>
+ 
+ #include "common.h"
+ #include "input_recording.h"
+@@ -19,6 +20,47 @@
  
  #define USE_PRIVATE_API 0
  
@@ -50,7 +71,7 @@ index 9623eb1..7ca1beb 100644
  enum {
      IDX_LT = 6,
      IDX_RT = 7,
-@@ -88,6 +129,14 @@ static void appkitMapControllerToSlot(GCController *controller, GamepadSlot *slo
+@@ -88,6 +130,14 @@ static void appkitMapControllerToSlot(GCController *controller, GamepadSlot *slo
          slot->axisValue[2] = extended.rightThumbstick.xAxis.value;
          slot->axisValue[3] = -extended.rightThumbstick.yAxis.value;
  
@@ -65,7 +86,7 @@ index 9623eb1..7ca1beb 100644
          if (extended.leftThumbstickButton) {
              slot->buttonDown[10] = extended.leftThumbstickButton.pressed;
              slot->buttonValue[10] = extended.leftThumbstickButton.value;
-@@ -425,6 +474,25 @@ static bool platformGetWindowFullscreen(void) {
+@@ -425,6 +475,25 @@ static bool platformGetWindowFullscreen(void) {
      return ([window styleMask] & NSWindowStyleMaskFullScreen) != 0;
  }
  
@@ -91,7 +112,7 @@ index 9623eb1..7ca1beb 100644
  static void platformSetWindowFullscreen(bool fullscreen) {
      if (fullscreen == platformGetWindowFullscreen()) return;
      [window toggleFullScreen:nil];
-@@ -780,6 +848,7 @@ void platformInitFunctions(Runner *runner) {
+@@ -780,11 +849,161 @@ void platformInitFunctions(Runner *runner) {
      runner->setWindowPosition = platformSetWindowPosition;
      runner->getWindowFullscreen = platformGetWindowFullscreen;
      runner->setWindowFullscreen = platformSetWindowFullscreen;
@@ -99,7 +120,161 @@ index 9623eb1..7ca1beb 100644
      runner->currentCursor = GML_CR_ARROW;
  }
  
-@@ -828,6 +897,7 @@ bool platformHandleEvents(void)
++// ===[ Display filter ]===
++// BUTTERSCOTCH_FILTER=scanlines|crt redraws the finished frame through a shader before it's shown.
++// BUTTERSCOTCH_FILTER_LINES is the game's height in pixels (AM2R: 240), so each game row gets one scanline.
++static int filterMode = -1; // 0 none, 1 scanlines, 2 crt
++static float filterLines = 240;
++static GLuint filterProgram = 0, filterTexture = 0;
++static int filterTexW = 0, filterTexH = 0;
++
++static const char *filterVertex =
++    "#version 120\n"
++    "void main() { gl_Position = gl_Vertex; gl_TexCoord[0] = gl_MultiTexCoord0; }\n";
++
++static const char *filterFragment =
++    "#version 120\n"
++    "uniform sampler2D frame;\n"
++    "uniform vec2 size;\n"
++    "uniform float lines;\n"
++    "uniform int mode;\n"
++    "void main() {\n"
++    "    vec2 uv = gl_TexCoord[0].xy;\n"
++    "    float vignette = 1.0;\n"
++    "    if (mode == 2) {\n"
++    "        vec2 c = uv * 2.0 - 1.0;\n"
++    "        c *= 1.0 + 0.035 * vec2(c.y * c.y, c.x * c.x);\n"
++    "        uv = c * 0.5 + 0.5;\n"
++    "        if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) { gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }\n"
++    "        vec2 e = smoothstep(0.0, 0.03, uv) * smoothstep(0.0, 0.03, 1.0 - uv);\n"
++    "        vignette = e.x * e.y * (1.0 - 0.18 * dot(c, c));\n"
++    "    }\n"
++    "    vec3 color = texture2D(frame, uv).rgb;\n"
++    "    float row = fract(uv.y * lines);\n"
++    "    float beam = 0.5 + 0.5 * cos((row - 0.5) * 6.2831853);\n"
++    "    float depth = mode == 2 ? 0.45 : 0.35;\n"
++    "    color *= mix(1.0 - depth, 1.0, beam);\n"
++    "    if (mode == 2) {\n"
++    "        float column = mod(gl_FragCoord.x, 3.0);\n"
++    "        vec3 mask = column < 1.0 ? vec3(1.0, 0.82, 0.82) : column < 2.0 ? vec3(0.82, 1.0, 0.82) : vec3(0.82, 0.82, 1.0);\n"
++    "        color *= mask * 1.25;\n"
++    "    } else {\n"
++    "        color *= 1.12;\n"
++    "    }\n"
++    "    gl_FragColor = vec4(color * vignette, 1.0);\n"
++    "}\n";
++
++static GLuint filterCompile(GLenum type, const char *source) {
++    GLuint shader = glCreateShader(type);
++    glShaderSource(shader, 1, &source, NULL);
++    glCompileShader(shader);
++    GLint ok = 0;
++    glGetShaderiv(shader, GL_COMPILE_STATUS, &ok);
++    if (!ok) {
++        char log[1024];
++        glGetShaderInfoLog(shader, sizeof(log), NULL, log);
++        fprintf(stderr, "Display filter: shader failed: %s\n", log);
++        glDeleteShader(shader);
++        return 0;
++    }
++    return shader;
++}
++
++static void filterSetUp(void) {
++    filterMode = 0;
++    const char *name = getenv("BUTTERSCOTCH_FILTER");
++    if (!name) return;
++    if (strcmp(name, "scanlines") == 0) filterMode = 1;
++    else if (strcmp(name, "crt") == 0) filterMode = 2;
++    else return;
++    const char *lines = getenv("BUTTERSCOTCH_FILTER_LINES");
++    if (lines && atof(lines) > 0) filterLines = (float)atof(lines);
++    GLuint vs = filterCompile(GL_VERTEX_SHADER, filterVertex);
++    GLuint fs = filterCompile(GL_FRAGMENT_SHADER, filterFragment);
++    if (!vs || !fs) { filterMode = 0; return; }
++    filterProgram = glCreateProgram();
++    glAttachShader(filterProgram, vs);
++    glAttachShader(filterProgram, fs);
++    glLinkProgram(filterProgram);
++    glDeleteShader(vs);
++    glDeleteShader(fs);
++    GLint ok = 0;
++    glGetProgramiv(filterProgram, GL_LINK_STATUS, &ok);
++    if (!ok) { fprintf(stderr, "Display filter: link failed\n"); filterMode = 0; return; }
++    glGenTextures(1, &filterTexture);
++    fprintf(stderr, "Display filter: %s, %.0f lines\n", name, filterLines);
++}
++
++static void filterApply(void) {
++    if (filterMode < 0) filterSetUp();
++    if (filterMode == 0) return;
++    NSRect backing = [glView convertRectToBacking:[glView bounds]];
++    int w = (int)backing.size.width, h = (int)backing.size.height;
++    if (w <= 0 || h <= 0) return;
++
++    GLint program, texture, activeTexture, readFb, drawFb, viewport[4];
++    glGetIntegerv(GL_CURRENT_PROGRAM, &program);
++    glGetIntegerv(GL_ACTIVE_TEXTURE, &activeTexture);
++    glActiveTexture(GL_TEXTURE0);
++    glGetIntegerv(GL_TEXTURE_BINDING_2D, &texture);
++    glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING_EXT, &readFb);
++    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING_EXT, &drawFb);
++    glGetIntegerv(GL_VIEWPORT, viewport);
++    glPushAttrib(GL_ALL_ATTRIB_BITS);
++    glMatrixMode(GL_PROJECTION); glPushMatrix(); glLoadIdentity();
++    glMatrixMode(GL_MODELVIEW); glPushMatrix(); glLoadIdentity();
++    glMatrixMode(GL_TEXTURE); glPushMatrix(); glLoadIdentity();
++
++    glBindFramebufferEXT(GL_READ_FRAMEBUFFER_EXT, 0);
++    glBindFramebufferEXT(GL_DRAW_FRAMEBUFFER_EXT, 0);
++    glDisable(GL_BLEND); glDisable(GL_DEPTH_TEST); glDisable(GL_SCISSOR_TEST); glDisable(GL_CULL_FACE); glDisable(GL_ALPHA_TEST);
++    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
++    glViewport(0, 0, w, h);
++
++    glBindTexture(GL_TEXTURE_2D, filterTexture);
++    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filterMode == 2 ? GL_LINEAR : GL_NEAREST);
++    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filterMode == 2 ? GL_LINEAR : GL_NEAREST);
++    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
++    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
++    glReadBuffer(GL_BACK);
++    if (w != filterTexW || h != filterTexH) {
++        glCopyTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 0, 0, w, h, 0);
++        filterTexW = w; filterTexH = h;
++    } else {
++        glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, w, h);
++    }
++
++    glUseProgram(filterProgram);
++    glUniform1i(glGetUniformLocation(filterProgram, "frame"), 0);
++    glUniform2f(glGetUniformLocation(filterProgram, "size"), (float)w, (float)h);
++    glUniform1f(glGetUniformLocation(filterProgram, "lines"), filterLines);
++    glUniform1i(glGetUniformLocation(filterProgram, "mode"), filterMode);
++    glBegin(GL_QUADS);
++    glTexCoord2f(0, 0); glVertex2f(-1, -1);
++    glTexCoord2f(1, 0); glVertex2f(1, -1);
++    glTexCoord2f(1, 1); glVertex2f(1, 1);
++    glTexCoord2f(0, 1); glVertex2f(-1, 1);
++    glEnd();
++
++    glMatrixMode(GL_TEXTURE); glPopMatrix();
++    glMatrixMode(GL_PROJECTION); glPopMatrix();
++    glMatrixMode(GL_MODELVIEW); glPopMatrix();
++    glPopAttrib();
++    glUseProgram((GLuint)program);
++    glBindTexture(GL_TEXTURE_2D, (GLuint)texture);
++    glActiveTexture((GLenum)activeTexture);
++    glBindFramebufferEXT(GL_READ_FRAMEBUFFER_EXT, (GLuint)readFb);
++    glBindFramebufferEXT(GL_DRAW_FRAMEBUFFER_EXT, (GLuint)drawFb);
++    glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
++}
++
+ void platformSwapBuffers(void)
+ {
++    filterApply();
+     [glContext flushBuffer];
+ }
+ 
+@@ -828,6 +1047,7 @@ bool platformHandleEvents(void)
                      g_runner->gamepads->connectedCount++;
                  }
              }

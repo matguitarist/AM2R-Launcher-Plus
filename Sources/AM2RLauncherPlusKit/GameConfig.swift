@@ -196,3 +196,22 @@ public enum GameLanguages {
         }
     }
 }
+
+/// A look drawn over the game by the engine (patch 0007). Not in config.ini: the game doesn't know about it.
+public enum DisplayFilter: String, CaseIterable, Codable, Sendable {
+    case none, scanlines, crt
+
+    public var title: String {
+        switch self {
+        case .none: "None"
+        case .scanlines: "Scanlines"
+        case .crt: "CRT"
+        }
+    }
+
+    /// BUTTERSCOTCH_FILTER and BUTTERSCOTCH_FILTER_LINES for the engine; empty for none.
+    /// AM2R is 240 pixels tall, so each game row gets one scanline.
+    public var engineEnvironment: [String: String] {
+        self == .none ? [:] : ["BUTTERSCOTCH_FILTER": rawValue, "BUTTERSCOTCH_FILTER_LINES": "240"]
+    }
+}

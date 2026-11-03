@@ -124,3 +124,9 @@ struct GameSettingsTests {
         #expect(languages.count >= 10)
     }
 }
+
+@Test func displayFiltersTellTheEngine() {
+    #expect(DisplayFilter.none.engineEnvironment.isEmpty)
+    #expect(DisplayFilter.crt.engineEnvironment == ["BUTTERSCOTCH_FILTER": "crt", "BUTTERSCOTCH_FILTER_LINES": "240"])
+    #expect(DisplayFilter(rawValue: "scanlines") == .scanlines)
+}

@@ -40,6 +40,13 @@ final class Profile {
     var uuid: UUID = UUID()
     /// The Mac controller layout was written once (S-011); after that the player's choice stands.
     var controllerLayoutSet: Bool = false
+    /// Scanlines or CRT drawn over the game by the engine.
+    var displayFilterRaw: String = DisplayFilter.none.rawValue
+
+    var displayFilter: DisplayFilter {
+        get { DisplayFilter(rawValue: displayFilterRaw) ?? .none }
+        set { displayFilterRaw = newValue.rawValue }
+    }
 
     var engine: Engine {
         get { Engine(rawValue: engineRaw) ?? .native }
@@ -343,7 +350,8 @@ final class AppModel {
         if settings.controller == .mac { try? settings.write(to: GameRunner.saveFolder(for: profile)) }
         do {
             game = try GameRunner(profile: profile, extraArguments: extraArguments,
-                                  gamepadKeys: settings.controller.engineKeys) { [weak self] status in
+                                  gamepadKeys: settings.controller.engineKeys,
+                                  environment: profile.displayFilter.engineEnvironment) { [weak self] status in
                 self?.gameEnded(status: status)
             }
         } catch {
