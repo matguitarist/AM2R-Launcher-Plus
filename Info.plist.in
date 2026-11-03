@@ -8,10 +8,13 @@
 <key>CFBundleIconFile</key><string>AppIcon</string>
 <key>CFBundleIconName</key><string>AppIcon</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleShortVersionString</key><string>0.1</string>
+<key>CFBundleShortVersionString</key><string>__VERSION__</string>
 <key>CFBundleVersion</key><string>__BUILD__</string>
 <key>LSMinimumSystemVersion</key><string>26.0</string>
 <key>LSApplicationCategoryType</key><string>public.app-category.productivity</string>
 <key>NSHighResolutionCapable</key><true/>
 <key>NSPrincipalClass</key><string>NSApplication</string>
+<key>SUFeedURL</key><string>https://github.com/matguitarist/AM2R-Launcher-Plus/releases/latest/download/appcast.xml</string>
+<key>SUPublicEDKey</key><string>H6yftcMfcpDDLaySsKkbpOMg7upKVNAlNax3zVGZGFs=</string>
+<key>SUEnableAutomaticChecks</key><true/>
 </dict></plist>

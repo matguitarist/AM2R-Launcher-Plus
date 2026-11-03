@@ -28,6 +28,10 @@ struct AM2RLauncherPlusApp: App {
         .defaultSize(width: 1100, height: 720)
         .windowToolbarStyle(.unified)
         .commands {
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates…") { LauncherUpdater.shared.checkForUpdates() }
+                    .disabled(!LauncherUpdater.shared.canCheck)
+            }
             SidebarCommands()
             ToolbarCommands()
             CommandGroup(replacing: .newItem) {

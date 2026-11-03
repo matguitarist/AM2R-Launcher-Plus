@@ -251,6 +251,7 @@ Status: todo
 
 ### S-032 Signed, notarized, self-updating app
 Thimble: d8b988eb
+Notes: Sparkle 2 is wired in (feed: appcast.xml of the latest GitHub release, EdDSA key in the login Keychain, account "am2rlauncherplus"); tools/release.sh builds, notarizes and publishes. Done after the first real release is found by an older build.
 Acceptance:
 - [manual] A notarized DMG opens without warnings; Sparkle finds a test update.
 Status: todo

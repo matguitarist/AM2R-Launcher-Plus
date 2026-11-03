@@ -38,7 +38,11 @@ mkdir -p "$HOME/Applications"
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$bin" "$app/Contents/MacOS/$name"
-sed -e "s/__BUILD__/$(date +%Y%m%d%H%M)/" "$here/Info.plist.in" > "$app/Contents/Info.plist"
+# Version from VERSION (tools/release.sh sets it); the build number is the date, so it always grows (Sparkle compares it).
+sed -e "s/__BUILD__/$(date +%Y%m%d%H%M)/" -e "s/__VERSION__/$(cat "$here/VERSION")/" "$here/Info.plist.in" > "$app/Contents/Info.plist"
+# Sparkle (launcher updates, S-032), next to the executable's @executable_path/../Frameworks rpath.
+mkdir -p "$app/Contents/Frameworks"
+cp -R "$scratch/$config/Sparkle.framework" "$app/Contents/Frameworks/"
 # The icon: Icon/AppIcon.icon -> Resources/Assets.car + AppIcon.icns, rebuilt when it changed.
 if [[ -d "$here/Icon/AppIcon.icon" ]]; then
   car="$here/Resources/Assets.car"
@@ -60,8 +64,15 @@ cp "$engine/VERSION" "$app/Contents/Resources/Engine/VERSION"
 cp "$here/patches/butterscotch/all-current.patch" "$app/Contents/Resources/Engine/butterscotch-am2r.patch"
 cp "$here/Engine/README.md" "$app/Contents/Resources/Engine/README.md"
 xattr -cr "$app"
-codesign --force --sign "$identity" "$helper" 2>&1 | grep -v "replacing existing signature" || true
-codesign --force --sign "$identity" "$app" 2>&1 | grep -v "replacing existing signature" || true
+# Inside out: Sparkle's helpers, the framework, the engine, then the app. SIGN_OPTIONS adds the hardened runtime for releases.
+sign() { codesign --force ${=SIGN_OPTIONS:-} --sign "$identity" "$@" 2>&1 | grep -v "replacing existing signature" || true; }
+sparkle="$app/Contents/Frameworks/Sparkle.framework/Versions/B"
+for item in "$sparkle/XPCServices/Installer.xpc" "$sparkle/XPCServices/Downloader.xpc" "$sparkle/Autoupdate" "$sparkle/Updater.app"; do
+  [[ -e "$item" ]] && sign "$item"
+done
+sign "$app/Contents/Frameworks/Sparkle.framework"
+codesign --force ${=SIGN_OPTIONS:-} --sign "$identity" "$helper" 2>&1 | grep -v "replacing existing signature" || true
+codesign --force ${=SIGN_OPTIONS:-} --sign "$identity" "$app" 2>&1 | grep -v "replacing existing signature" || true
 echo "installed $app (signed: ${identity})"
 
 if [[ " $* " == *" --open "* ]]; then

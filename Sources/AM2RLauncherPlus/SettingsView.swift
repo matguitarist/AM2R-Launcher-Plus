@@ -104,6 +104,7 @@ struct GeneralSettings: View {
             }
         }
         .task { await measure() }
+        UpdatesSection()
         Section("Engine") {
             if let version = EngineInfo.version {
                 LabeledContent("Native", value: "Butterscotch \(version.prefix(7))")
@@ -143,5 +144,27 @@ enum EngineInfo {
 
     static func revealFiles() {
         NSWorkspace.shared.activateFileViewerSelecting([folder.appending(path: "butterscotch-am2r.patch")])
+    }
+}
+
+/// Launcher updates with Sparkle (S-032). Game updates are on the Play page (S-020).
+struct UpdatesSection: View {
+    @Bindable private var updater = LauncherUpdater.shared
+
+    var body: some View {
+        Section {
+            LabeledContent("Version", value: LauncherUpdater.version)
+            Toggle("Check for launcher updates automatically", isOn: $updater.checksAutomatically)
+            HStack {
+                Spacer()
+                Button("Check Now") { updater.checkForUpdates() }
+                    .disabled(!updater.canCheck)
+                    .help("Look for a newer AM2R Launcher Plus")
+            }
+        } header: {
+            Text("Updates")
+        } footer: {
+            Text("Updates of AM2R Launcher Plus come from its GitHub releases and are signed. Game updates show on the Play page.")
+        }
     }
 }
