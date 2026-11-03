@@ -126,3 +126,21 @@ func buildsAProfileFromAMod() throws {
     #expect(result.info.version == "1.2")
     #expect(result.info.name == "Test Mod")
 }
+
+/// A real community mod: MOD_ZIP=<zip> AM2R11_PATH=<AM2R 1.1 folder> swift test --filter installsARealMod
+@Test(.enabled(if: ProcessInfo.processInfo.environment["MOD_ZIP"] != nil && ProcessInfo.processInfo.environment["AM2R11_PATH"] != nil))
+func installsARealMod() throws {
+    let env = ProcessInfo.processInfo.environment
+    let zip = URL(fileURLWithPath: env["MOD_ZIP"]!)
+    let game = URL(fileURLWithPath: env["AM2R11_PATH"]!, isDirectory: true)
+    let package = try ModPackage.read(zip)
+    let work = FileManager.default.temporaryDirectory.appending(path: "realmod-\(UUID().uuidString)", directoryHint: .isDirectory)
+    let extracted = work.appending(path: "mod", directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: extracted, withIntermediateDirectories: true)
+    try package.extract(into: extracted)
+    let destination = URL(fileURLWithPath: env["MOD_OUT"] ?? work.appending(path: "profile").path, isDirectory: true)
+    let result = try ProfileBuilder.build(source: game, kind: .folder, root: "", patch: .mod(extracted, package: package), destination: destination)
+    let head = try FileHandle(forReadingFrom: result.folder.appending(path: "game.ios")).read(upToCount: 4)
+    #expect(head == Data("FORM".utf8))
+    print("REALMOD \(package.name) \(package.version) by \(package.author), \(package.profile.operatingSystem), \(package.gamePatch) -> \(result.folder.path)")
+}
