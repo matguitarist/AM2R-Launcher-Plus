@@ -1,6 +1,7 @@
 import AM2RLauncherPlusKit
 import AppKit
 import IOKit.pwr_mgt
+import SwiftData
 import SwiftUI
 
 /// Screenshot mode for agents.
@@ -65,7 +66,16 @@ enum Snapshot {
             downloading.bytesTotal = 36_300_000
             var failed = InstallState()
             failed.failure = PatchData.Failure.offline.message
-            for (name, state) in [("install-progress", downloading), ("install-error", failed)] where only?.contains(name) ?? true {
+            // S-033: a mod install, and a mod the native engine can't run.
+            var modding = InstallState()
+            modding.modZip = URL(fileURLWithPath: "/tmp/Sample Mod.zip")
+            modding.modName = "Sample Mod 1.2"
+            modding.step = .patch
+            var modFailed = InstallState()
+            modFailed.modZip = URL(fileURLWithPath: "/tmp/Fast Mod.zip")
+            modFailed.failure = ModPackage.Failure.yyc(name: "Fast Mod").message
+            for (name, state) in [("install-progress", downloading), ("install-error", failed),
+                                  ("install-mod", modding), ("install-mod-error", modFailed)] where only?.contains(name) ?? true {
                 model.sidebar = .play
                 model.install = state
                 for mode in ["light", "dark"] {
@@ -75,6 +85,18 @@ enum Snapshot {
                 }
             }
             model.install = nil
+            if only?.contains("play-mod") ?? true,
+               let mod = ((try? model.container.mainContext.fetch(FetchDescriptor<Profile>())) ?? []).first(where: \.isMod) {
+                let saved = model.selection
+                model.sidebar = .play
+                model.selection = mod.id
+                for mode in ["light", "dark"] {
+                    NSApp.appearance = NSAppearance(named: mode == "light" ? .aqua : .darkAqua)
+                    try? await Task.sleep(for: .seconds(0.8))
+                    capture(to: "\(dir)/play-mod-\(mode).png")
+                }
+                model.selection = saved
+            }
             if only?.contains("play-running") ?? true {
                 model.sidebar = .play
                 model.previewPlaying = true

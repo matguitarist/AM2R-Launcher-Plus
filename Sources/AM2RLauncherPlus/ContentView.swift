@@ -16,6 +16,9 @@ struct ContentView: View {
             }
         }
         .modifier(ProfileDialogs())
+        .fileImporter(isPresented: Bindable(model).showModChooser, allowedContentTypes: [.zip]) { result in
+            if case .success(let zip) = result { model.sidebar = .play; model.startModInstall(zip: zip) }
+        }
         .task {
             SeedData.insertIfRequested(into: model)
             SelfTest.runIfRequested(model: model)
@@ -131,6 +134,10 @@ extension PlayPage {
             HStack(spacing: Space.sm) {
                 Text("Version \(profile.version)")
                 Text("·")
+                if profile.isMod, !profile.author.isEmpty {
+                    Text("by \(profile.author)")
+                    Text("·")
+                }
                 Label(profile.engine.title, systemImage: "cpu")
                     .help(profile.engine.help)
             }
@@ -238,6 +245,13 @@ struct ProfilesPage: View {
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) { notices }
+        .dropDestination(for: URL.self) { urls, _ in
+            guard let zip = urls.first(where: { $0.pathExtension.lowercased() == "zip" }), model.source != nil,
+                  model.install == nil, !model.isPlaying else { return false }
+            model.sidebar = .play
+            model.startModInstall(zip: zip)
+            return true
+        }
         .navigationTitle("Profiles")
     }
 

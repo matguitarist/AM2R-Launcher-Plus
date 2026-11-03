@@ -56,6 +56,10 @@ final class Profile {
     var controllerLayoutSet: Bool = false
     /// Scanlines or CRT drawn over the game by the engine.
     var displayFilterRaw: String = DisplayFilter.none.rawValue
+    /// Installed from a mod zip (S-033): native engine only, no Community Updates updates.
+    var isMod: Bool = false
+    /// The mod's author from its profile.xml.
+    var author: String = ""
 
     var displayFilter: DisplayFilter {
         get { DisplayFilter(rawValue: displayFilterRaw) ?? .none }
@@ -162,6 +166,8 @@ nonisolated enum DataFolder {
     static var latestUpdate: URL { url.appending(path: "Caches/latest-update.json") }
     static var patchData: URL { url.appending(path: "PatchData", directoryHint: .isDirectory) }
     static var profiles: URL { url.appending(path: "Profiles", directoryHint: .isDirectory) }
+    /// Mod zips are unpacked here while they install, then removed (S-033).
+    static var mods: URL { url.appending(path: "Caches/Mods", directoryHint: .isDirectory) }
 }
 
 /// The welcome page's state while the player picks AM2R 1.1.
@@ -185,6 +191,9 @@ struct InstallState: Equatable {
             }
         }
 
+        /// A mod has nothing to download: the first step reads its zip.
+        func title(mod: Bool) -> String { mod && self == .download ? "Reading the mod" : title }
+
         static func < (a: Step, b: Step) -> Bool { a.rawValue < b.rawValue }
     }
 
@@ -197,6 +206,17 @@ struct InstallState: Equatable {
     /// Updating this profile in place (S-021) instead of installing a new one.
     var updating: UUID?
     var updatingName: String?
+    /// Installing this mod zip (S-033) instead of Community Updates.
+    var modZip: URL?
+    var modName: String?
+
+    var title: String {
+        if let finishedName { return "\(finishedName) is ready" }
+        if let updatingName { return "Updating \(updatingName)" }
+        if let modName { return "Installing \(modName)" }
+        if let modZip { return "Installing \(modZip.deletingPathExtension().lastPathComponent)" }
+        return "Installing Community Updates"
+    }
 }
 
 /// A game run that ended with an error (S-006).
@@ -262,6 +282,8 @@ final class AppModel {
     private var installTask: Task<Void, Never>?
     /// Opens the file chooser for AM2R 1.1 (File > Choose AM2R 1.1…, ⌘O).
     var showChooser = false
+    /// The open panel for Profile › Install Mod… (S-033).
+    var showModChooser = false
     /// Snapshot mode shows the welcome page even when profiles exist.
     var forceWelcome = false
     private var hashCache = HashCache(file: DataFolder.hashCache)
@@ -398,6 +420,70 @@ final class AppModel {
         }
     }
 
+    /// Installs a mod zip as a new profile (S-033): read the zip, patch AM2R 1.1, copy its files.
+    func startModInstall(zip: URL) {
+        guard let source, installTask == nil, game == nil else { return }
+        var state = InstallState()
+        state.modZip = zip
+        install = state
+        let sourceURL = source.url, kind = AM2R11.Kind(rawValue: source.kindRaw) ?? .zip, root = source.root
+        log(.info, "Install", "Installing the mod \(zip.path)")
+        installTask = Task {
+            defer { installTask = nil }
+            let uuid = UUID()
+            let extracted = DataFolder.mods.appending(path: uuid.uuidString, directoryHint: .isDirectory)
+            defer { try? FileManager.default.removeItem(at: extracted) }
+            do {
+                let scoped = zip.startAccessingSecurityScopedResource()
+                defer { if scoped { zip.stopAccessingSecurityScopedResource() } }
+                let package = try await Task.detached(priority: .userInitiated) { () throws -> ModPackage in
+                    let package = try ModPackage.read(zip)
+                    try FileManager.default.createDirectory(at: extracted, withIntermediateDirectories: true)
+                    try package.extract(into: extracted)
+                    return package
+                }.value
+                let title = package.version.isEmpty ? package.name : "\(package.name) \(package.version)"
+                install?.modName = title
+                log(.info, "Install", "Mod \(title) by \(package.author.isEmpty ? "unknown" : package.author) (\(package.profile.operatingSystem), \(package.gamePatch))")
+                try Task.checkCancellation()
+                install?.step = .patch
+                let destination = DataFolder.profiles.appending(path: uuid.uuidString, directoryHint: .isDirectory)
+                _ = try await Task.detached(priority: .userInitiated) {
+                    try ProfileBuilder.build(source: sourceURL, kind: kind, root: root, patch: .mod(extracted, package: package), destination: destination) { step in
+                        if step == .copy { Task { @MainActor in self.install?.step = .copy } }
+                    }
+                }.value
+                let profile = addProfile(name: title, version: package.version)
+                profile.uuid = uuid
+                profile.isMod = true
+                profile.author = package.author
+                applyFirstSettings(to: profile)
+                try? container.mainContext.save()
+                log(.info, "Install", "\(profile.name) is ready in \(profile.folder.path)")
+                selection = profile.id
+                install?.finishedName = profile.name
+                try? await Task.sleep(for: .seconds(1))
+                install = nil
+                sidebar = .play
+            } catch is CancellationError {
+                log(.info, "Install", "Cancelled")
+                install = nil
+            } catch let failure as ModPackage.Failure {
+                log(.error, "Install", "\(failure.message) (\(failure))")
+                install?.failure = failure.message
+            } catch ProfileBuilder.Failure.patchFailed(let detail) {
+                log(.error, "Install", "Mod patch failed: \(detail)")
+                install?.failure = "Patching failed. This mod doesn't match AM2R 1.1."
+            } catch let failure as ProfileBuilder.Failure {
+                log(.error, "Install", "\(failure.message) (\(failure))")
+                install?.failure = failure.message
+            } catch {
+                log(.error, "Install", "\(error)")
+                install?.failure = "Unable to install: \(error.localizedDescription)"
+            }
+        }
+    }
+
     /// Stops an install; partial files are removed or reused by the next try.
     func cancelInstall() {
         installTask?.cancel()
@@ -502,7 +588,7 @@ final class AppModel {
 
     /// The banner's title when the latest patch data is newer than what `profile` was built from.
     func availableUpdate(for profile: Profile) -> String? {
-        guard let latestUpdate else { return nil }
+        guard let latestUpdate, !profile.isMod else { return nil }
         let installed = PatchData.installedManifest(in: DataFolder.patchData.appending(path: profile.patchCommit, directoryHint: .isDirectory))
         guard UpdateCheck.isNewer(latestUpdate.manifest, than: installed, installedCommit: profile.patchCommit) else { return nil }
         return UpdateCheck.title(latestVersion: latestUpdate.version, installedVersion: profile.version)
@@ -669,7 +755,7 @@ final class AppModel {
 
     /// Game > Engine and the engine picker (S-014). Rosetta builds the profile's AM2R.app first, once.
     func setEngine(_ engine: Engine, for profile: Profile) {
-        guard !isPlaying, rosettaBuild == nil, engine != profile.engine else { return }
+        guard !isPlaying, rosettaBuild == nil, engine != profile.engine, !(engine == .rosetta && profile.isMod) else { return }
         engineError = nil
         log(.info, "Engine", "\(profile.name): \(engine.title)")
         if engine == .native || RosettaApp.app(in: profile.folder) != nil {

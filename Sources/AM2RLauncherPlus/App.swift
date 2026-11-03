@@ -39,6 +39,11 @@ struct AM2RLauncherPlusApp: App {
                     .keyboardShortcut("o")
             }
             CommandMenu("Profile") {
+                Button("Install Mod…") { model.showModChooser = true }
+                    .keyboardShortcut("o", modifiers: [.command, .option])
+                    .disabled(model.source == nil || model.install != nil || model.isPlaying)
+                    .help(model.source == nil ? "Install AM2R first" : "Install an AM2R mod zip as its own profile")
+                Divider()
                 let profile = model.currentProfile
                 let off = profile == nil || model.renameTarget != nil || model.install != nil || model.backupsFor != nil
                 Button("Rename…") { model.renameTarget = profile }
@@ -89,7 +94,8 @@ struct AM2RLauncherPlusApp: App {
                             set: { _ in if let profile = model.currentProfile { model.setEngine(engine, for: profile) } }))
                             .keyboardShortcut(engine == .native ? "1" : "2", modifiers: [.command, .option])
                             .disabled(model.isPlaying || model.rosettaBuild != nil
-                                      || (engine == .rosetta && !(model.rosettaInstalled && model.source?.hasWindowsGame == true)))
+                                      || (engine == .rosetta && (model.currentProfile?.isMod == true
+                                          || !(model.rosettaInstalled && model.source?.hasWindowsGame == true))))
                     }
                     if !model.rosettaInstalled {
                         Divider()

@@ -7,7 +7,7 @@ struct InstallPage: View {
 
     var body: some View {
         VStack(spacing: Space.xxl) {
-            Text(state.finishedName.map { "\($0) is ready" } ?? state.updatingName.map { "Updating \($0)" } ?? "Installing Community Updates")
+            Text(state.title)
                 .font(.largeTitle.bold())
                 .accessibilityAddTraits(.isHeader)
             VStack(alignment: .leading, spacing: Space.lg) {
@@ -27,7 +27,7 @@ struct InstallPage: View {
 
     private func row(_ step: InstallState.Step) -> some View {
         let status = status(of: step)
-        return HStack(alignment: .firstTextBaseline, spacing: Space.md) {
+        return HStack(alignment: .top, spacing: Space.md) {
             Group {
                 switch status {
                 case .pending: Image(systemName: "circle").foregroundStyle(.tertiary)
@@ -36,10 +36,11 @@ struct InstallPage: View {
                 case .failed: Image(systemName: "xmark.octagon.fill").foregroundStyle(.red)
                 }
             }
-            .frame(width: 20)
+            // One body line tall, so a spinner doesn't make its row taller than a check mark.
+            .frame(width: Space.xl, height: Space.lg)
             .gridProbe("icon-\(step)", area: "install-steps", edge: nil)
             VStack(alignment: .leading, spacing: Space.xs) {
-                Text(step.title)
+                Text(step.title(mod: state.modZip != nil))
                     .foregroundStyle(status == .pending ? .secondary : .primary)
                 if step == .download, status == .active, state.bytesTotal > 0 {
                     ProgressView(value: Double(state.bytesDone), total: Double(state.bytesTotal))
@@ -68,9 +69,15 @@ struct InstallPage: View {
             HStack(spacing: Space.md) {
                 Button("Cancel") { model.cancelInstall() }
                     .keyboardShortcut(.cancelAction)
-                Button("Try Again") { let updating = state.updating; model.install = nil; model.startInstall(updating: updating) }
-                    .buttonStyle(.borderedProminent)
-                    .keyboardShortcut(.defaultAction)
+                if state.modZip != nil {
+                    Button("Choose Another Mod…") { model.install = nil; model.showModChooser = true }
+                        .buttonStyle(.borderedProminent)
+                        .keyboardShortcut(.defaultAction)
+                } else {
+                    Button("Try Again") { let updating = state.updating; model.install = nil; model.startInstall(updating: updating) }
+                        .buttonStyle(.borderedProminent)
+                        .keyboardShortcut(.defaultAction)
+                }
             }
             .controlSize(.large)
         } else {

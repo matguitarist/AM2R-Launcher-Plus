@@ -302,8 +302,49 @@ enum SelfTest {
                         for _ in 0..<6 { GameRunner.pruneLogs(in: GameRunner.logFolder(for: installed), keep: 4) }
                         let kept = (try? FileManager.default.contentsOfDirectory(atPath: GameRunner.logFolder(for: installed).path))?.count ?? 0
                         check("at most five logs are kept", kept <= 5)
-                        try? FileManager.default.removeItem(at: GameRunner.saveFolder(for: installed).deletingLastPathComponent())
-                        try? FileManager.default.removeItem(at: GameRunner.logFolder(for: installed).deletingLastPathComponent())
+
+                        // S-033: a mod zip built from the same patch, the way the mod packer writes it.
+                        let patchFolder = DataFolder.patchData.appending(path: installed.patchCommit, directoryHint: .isDirectory)
+                        let modProfile = #"<message XMLVersion="1" OperatingSystem="Linux" Version="2.0" Name="Self-Test Mod" Author="Self &amp; Test" UsesYYC="False" />"#
+                        let modZip = makeZip("Self-Test Mod", files: ["profile.xml": Data(modProfile.utf8)],
+                                             copying: ["game.xdelta": patchFolder.appending(path: "data/game.xdelta"),
+                                                       "files_to_copy": patchFolder.appending(path: "data/files_to_copy")])
+                        let before = profiles().count
+                        model.startModInstall(zip: modZip)
+                        check("a mod install shows the mod's page", model.install?.modZip == modZip)
+                        for _ in 0..<1200 where model.install != nil && model.install?.failure == nil { try? await Task.sleep(for: .milliseconds(100)) }
+                        check("the mod installs without an error", model.install == nil, model.install?.failure ?? "still running")
+                        let mod = profiles().first { $0.id == model.selection }
+                        check("the mod is a new, selected profile", profiles().count == before + 1 && mod?.isMod == true)
+                        check("the mod profile has the mod's name, version and author",
+                              mod?.name == "Self-Test Mod 2.0" && mod?.version == "2.0" && mod?.author == "Self & Test", mod?.name ?? "none")
+                        if let mod {
+                            check("the mod's game.ios is patched", AM2R11.md5(of: mod.folder.appending(path: "game.ios")) == "0de029951c94b04545c9c257053ad712")
+                            check("a mod shows no Community Updates update", model.availableUpdate(for: mod) == nil)
+                            model.setEngine(.rosetta, for: mod)
+                            check("a mod stays on the native engine", mod.engine == .native)
+                            check("the unpacked mod is removed after install",
+                                  ((try? FileManager.default.contentsOfDirectory(atPath: DataFolder.mods.path)) ?? []).isEmpty)
+                            model.play(extraArguments: ["--headless", "--exit-at-frame", "120"])
+                            for _ in 0..<300 where model.game != nil { try? await Task.sleep(for: .milliseconds(100)) }
+                            check("the mod plays and ends cleanly", model.lastGameFailure == nil && mod.lastPlayedAt != nil)
+                            try? FileManager.default.removeItem(at: mod.folder)
+                            try? FileManager.default.removeItem(at: GameRunner.saveFolder(for: mod))
+                            try? FileManager.default.removeItem(at: GameRunner.logFolder(for: mod))
+                            context.delete(mod)
+                            try? context.save()
+                        }
+                        let yyc = makeZip("Fast Mod", files: ["profile.xml": Data(#"<message Version="1.0" Name="Fast Mod" UsesYYC="True" />"#.utf8),
+                                                              "AM2R.xdelta": Data("runner".utf8)], copying: [:])
+                        model.startModInstall(zip: yyc)
+                        for _ in 0..<100 where model.install?.failure == nil { try? await Task.sleep(for: .milliseconds(100)) }
+                        check("a YYC mod is refused with a reason", model.install?.failure == ModPackage.Failure.yyc(name: "Fast Mod").message,
+                              model.install?.failure ?? "no failure")
+                        check("a refused mod adds no profile", profiles().count == before)
+                        model.cancelInstall()
+                        // Only this profile's folders: Logs/ also holds launcher.log.
+                        try? FileManager.default.removeItem(at: GameRunner.saveFolder(for: installed))
+                        try? FileManager.default.removeItem(at: GameRunner.logFolder(for: installed))
                         try? FileManager.default.removeItem(at: installed.folder)
                         context.delete(installed)
                         try? context.save()
@@ -321,6 +362,24 @@ enum SelfTest {
             print(failures == 0 ? "SELFTEST PASS \(count) checks" : "SELFTEST FAIL \(failures) of \(count) checks")
             finish(code: failures == 0 ? 0 : 1)
         }
+    }
+
+    /// A zip in the temp folder holding `files` and copies of `copying` (files or folders), at its top level.
+    private static func makeZip(_ name: String, files: [String: Data], copying: [String: URL]) -> URL {
+        let fm = FileManager.default
+        let dir = fm.temporaryDirectory.appending(path: "selftest-\(UUID().uuidString)", directoryHint: .isDirectory)
+        let content = dir.appending(path: name, directoryHint: .isDirectory)
+        try? fm.createDirectory(at: content, withIntermediateDirectories: true)
+        for (path, data) in files { try? data.write(to: content.appending(path: path)) }
+        for (path, source) in copying { try? fm.copyItem(at: source, to: content.appending(path: path)) }
+        let zip = dir.appending(path: name + ".zip")
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/zip")
+        process.currentDirectoryURL = content
+        process.arguments = ["-qr", zip.path, "."]
+        try? process.run()
+        process.waitUntilExit()
+        return zip
     }
 
     private static func check(_ name: String, _ ok: Bool, _ detail: String = "") {

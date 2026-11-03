@@ -20,6 +20,14 @@ enum SeedData {
         older.playTime = 11 * 3_600
         older.lastPlayedAt = Date.now.addingTimeInterval(-30 * 86_400)
         context.insert(older)
+        // S-033: a mod installed next to Community Updates.
+        let mod = Profile(name: "Sample Mod 1.2", version: "1.2")
+        mod.isMod = true
+        mod.author = "A Modder"
+        mod.installedAt = Date.now.addingTimeInterval(-7 * 86_400)
+        mod.lastPlayedAt = Date.now.addingTimeInterval(-2 * 86_400)
+        mod.playTime = 45 * 60
+        context.insert(mod)
         let current = Profile(name: "Community Updates 1.5.5", version: "1.5.5")
         current.lastPlayedAt = Date.now.addingTimeInterval(-3_600)
         current.playTime = 2 * 3_600 + 14 * 60

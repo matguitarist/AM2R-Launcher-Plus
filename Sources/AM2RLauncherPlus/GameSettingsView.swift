@@ -135,6 +135,20 @@ struct EngineSection: View {
     private var canUseRosetta: Bool { model.rosettaInstalled && model.source?.hasWindowsGame == true }
 
     var body: some View {
+        if profile.isMod {
+            Section {
+                LabeledContent("Engine", value: Engine.native.title)
+            } header: {
+                Text("Engine")
+            } footer: {
+                Text("Mods play on the native engine.")
+            }
+        } else {
+            choices
+        }
+    }
+
+    @ViewBuilder private var choices: some View {
         @Bindable var model = model
         Section {
             Picker("Engine", selection: Binding(get: { profile.engine }, set: { model.setEngine($0, for: profile) })) {
