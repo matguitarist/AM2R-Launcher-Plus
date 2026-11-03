@@ -1,0 +1,19 @@
+diff --git a/src/backends/appkit.m b/src/backends/appkit.m
+index 9623eb1..882099b 100644
+--- a/src/backends/appkit.m
++++ b/src/backends/appkit.m
+@@ -88,6 +88,14 @@ static void appkitMapControllerToSlot(GCController *controller, GamepadSlot *slo
+         slot->axisValue[2] = extended.rightThumbstick.xAxis.value;
+         slot->axisValue[3] = -extended.rightThumbstick.yAxis.value;
+ 
++        // gp_select (8) = Options/View/Share, gp_start (9) = Menu/Start (matches SDL BACK/START).
++        if (extended.buttonOptions) {
++            slot->buttonDown[8] = extended.buttonOptions.pressed;
++            slot->buttonValue[8] = extended.buttonOptions.value;
++        }
++        slot->buttonDown[9] = extended.buttonMenu.pressed;
++        slot->buttonValue[9] = extended.buttonMenu.value;
++
+         if (extended.leftThumbstickButton) {
+             slot->buttonDown[10] = extended.leftThumbstickButton.pressed;
+             slot->buttonValue[10] = extended.leftThumbstickButton.value;

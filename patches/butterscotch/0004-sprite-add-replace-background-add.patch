@@ -1,0 +1,301 @@
+diff --git a/src/gl/gl_renderer.c b/src/gl/gl_renderer.c
+index 5c514eb..bb9214b 100644
+--- a/src/gl/gl_renderer.c
++++ b/src/gl/gl_renderer.c
+@@ -3543,6 +3543,7 @@ Renderer* GLRenderer_create(void) {
+     glVtable.clearScreen = glClearScreen;
+     glVtable.createSpriteFromSurface = glCreateSpriteFromSurface;
+     glVtable.deleteSprite = glDeleteSprite;
++    glVtable.createSpriteFromPixels = GLCommon_createSpriteFromPixels;
+     glVtable.gpuGetBlendFactors = glGpuGetBlendFactors;
+     glVtable.gpuGetBlendMode = glGpuGetBlendMode;
+     glVtable.gpuSetBlendMode = glGpuSetBlendMode;
+diff --git a/src/gl_common/gl_common.c b/src/gl_common/gl_common.c
+index fff546a..3289b86 100644
+--- a/src/gl_common/gl_common.c
++++ b/src/gl_common/gl_common.c
+@@ -653,3 +653,106 @@ void GLCommon_deleteDefaultFontTexture(GLDefaultUIFont* ui) {
+         ui->texture = 0;
+     }
+ }
++
++// ===[ Sprites from decoded images (sprite_add / sprite_replace / background_add) ]===
++
++static uint32_t GLCommon_allocTexturePageSlot(GLRenderer* gl) {
++    for (uint32_t i = gl->originalTexturePageCount; gl->textureCount > i; i++) {
++        if (gl->glTextures[i] == 0) return i;
++    }
++    uint32_t pageId = gl->textureCount++;
++    gl->glTextures = (GLuint *)safeRealloc(gl->glTextures, gl->textureCount * sizeof(GLuint));
++    gl->textureWidths = (int32_t *)safeRealloc(gl->textureWidths, gl->textureCount * sizeof(int32_t));
++    gl->textureHeights = (int32_t *)safeRealloc(gl->textureHeights, gl->textureCount * sizeof(int32_t));
++    gl->textureLoaded = (bool *)safeRealloc(gl->textureLoaded, gl->textureCount * sizeof(bool));
++    gl->glTextures[pageId] = 0;
++    gl->textureWidths[pageId] = 0;
++    gl->textureHeights[pageId] = 0;
++    gl->textureLoaded[pageId] = false;
++    return pageId;
++}
++
++static uint32_t GLCommon_allocTpagSlot(DataWin* dw, uint32_t originalTpagCount) {
++    for (uint32_t i = originalTpagCount; dw->tpag.count > i; i++) {
++        if (dw->tpag.items[i].texturePageId == -1) return i;
++    }
++    uint32_t index = dw->tpag.count++;
++    dw->tpag.items = (TexturePageItem *)safeRealloc(dw->tpag.items, dw->tpag.count * sizeof(TexturePageItem));
++    memset(&dw->tpag.items[index], 0, sizeof(TexturePageItem));
++    dw->tpag.items[index].texturePageId = -1;
++    return index;
++}
++
++int32_t GLCommon_createSpriteFromPixels(Renderer* renderer, const uint8_t* rgba, int32_t w, int32_t h, int32_t frames, int32_t xorig, int32_t yorig, int32_t targetSprite) {
++    GLRenderer* gl = (GLRenderer*) renderer;
++    DataWin* dw = renderer->dataWin;
++    if (rgba == nullptr || 0 >= w || 0 >= h) return -1;
++    if (0 >= frames) frames = 1;
++    int32_t frameW = w / frames;
++    if (0 >= frameW) { frames = 1; frameW = w; }
++    if (targetSprite >= 0 && (uint32_t) targetSprite >= dw->sprt.count) return -1;
++
++    // Pending batched draws reference the currently bound texture; flush before binding ours.
++    if (renderer->vtable->flush != nullptr) renderer->vtable->flush(renderer);
++
++    // One GL texture holds the whole strip; each frame is a TPAG into it.
++    GLuint texId;
++    glGenTextures(1, &texId);
++    glBindTexture(GL_TEXTURE_2D, texId);
++    glTexImage2D(GL_TEXTURE_2D, 0, GLCommon_surfaceInternalFormat(gl), w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
++    GLCommon_applyTexFilter(renderer->texFilter);
++    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
++    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
++
++    uint32_t pageId = GLCommon_allocTexturePageSlot(gl);
++    gl->glTextures[pageId] = texId;
++    gl->textureWidths[pageId] = w;
++    gl->textureHeights[pageId] = h;
++    gl->textureLoaded[pageId] = true;
++
++    int32_t* tpagIndices = (int32_t *)safeMalloc((size_t) frames * sizeof(int32_t));
++    for (int32_t f = 0; frames > f; f++) {
++        uint32_t tpagIndex = GLCommon_allocTpagSlot(dw, gl->originalTpagCount);
++        TexturePageItem* tpag = &dw->tpag.items[tpagIndex];
++        tpag->sourceX = (uint16_t) (f * frameW);
++        tpag->sourceY = 0;
++        tpag->sourceWidth = (uint16_t) frameW;
++        tpag->sourceHeight = (uint16_t) h;
++        tpag->targetX = 0;
++        tpag->targetY = 0;
++        tpag->targetWidth = (uint16_t) frameW;
++        tpag->targetHeight = (uint16_t) h;
++        tpag->boundingWidth = (uint16_t) frameW;
++        tpag->boundingHeight = (uint16_t) h;
++        tpag->texturePageId = (int16_t) pageId;
++        tpagIndices[f] = (int32_t) tpagIndex;
++    }
++
++    uint32_t spriteIndex;
++    Sprite* sprite;
++    if (targetSprite >= 0) {
++        // sprite_replace: keep the name and collision masks, swap in the new frames.
++        // The old TPAGs/texture of a dynamic sprite are left allocated (the frames array of a data.win sprite isn't ours to free).
++        spriteIndex = (uint32_t) targetSprite;
++        sprite = &dw->sprt.sprites[spriteIndex];
++    } else {
++        spriteIndex = DataWin_allocSpriteSlot(dw, gl->originalSpriteCount);
++        sprite = &dw->sprt.sprites[spriteIndex];
++        sprite->maskCount = 0;
++        sprite->masks = nullptr;
++    }
++    sprite->present = true;
++    sprite->width = (uint32_t) frameW;
++    sprite->height = (uint32_t) h;
++    sprite->marginLeft = 0;
++    sprite->marginTop = 0;
++    sprite->marginRight = frameW - 1;
++    sprite->marginBottom = h - 1;
++    sprite->originX = xorig;
++    sprite->originY = yorig;
++    sprite->textureCount = (uint32_t) frames;
++    sprite->tpagIndices = tpagIndices;
++
++    logInfo("GL: %s sprite %u from image (%dx%d, %d frame%s)\n", targetSprite >= 0 ? "Replaced" : "Created", spriteIndex, w, h, frames, frames == 1 ? "" : "s");
++    return (int32_t) spriteIndex;
++}
+diff --git a/src/gl_common/gl_common.h b/src/gl_common/gl_common.h
+index 3b0ea16..0742b78 100644
+--- a/src/gl_common/gl_common.h
++++ b/src/gl_common/gl_common.h
+@@ -208,6 +208,8 @@ struct GLRenderer {
+     float alphaTestRef;
+ };
+ 
++int32_t GLCommon_createSpriteFromPixels(Renderer* renderer, const uint8_t* rgba, int32_t w, int32_t h, int32_t frames, int32_t xorig, int32_t yorig, int32_t targetSprite);
++
+ static inline GLint GLCommon_surfaceInternalFormat(const GLRenderer* gl) {
+     if (gl->surfaceFormat != 0) return gl->surfaceFormat;
+ #ifdef GL_COMPRESSED_RGBA
+diff --git a/src/gl_legacy/gl_legacy_renderer.c b/src/gl_legacy/gl_legacy_renderer.c
+index f82a351..985edbe 100644
+--- a/src/gl_legacy/gl_legacy_renderer.c
++++ b/src/gl_legacy/gl_legacy_renderer.c
+@@ -2417,6 +2417,7 @@ Renderer* GLLegacyRenderer_create(void) {
+     glVtable.clearScreen = glClearScreen;
+     glVtable.createSpriteFromSurface = glCreateSpriteFromSurface;
+     glVtable.deleteSprite = glDeleteSprite;
++    glVtable.createSpriteFromPixels = GLCommon_createSpriteFromPixels;
+     glVtable.gpuGetBlendFactors = glGpuGetBlendFactors;
+     glVtable.gpuGetBlendMode = glGpuGetBlendMode;
+     glVtable.gpuSetBlendMode = glGpuSetBlendMode;
+diff --git a/src/renderer.h b/src/renderer.h
+index ae09f7d..284489e 100644
+--- a/src/renderer.h
++++ b/src/renderer.h
+@@ -170,6 +170,9 @@ typedef struct {
+     void (*clearScreen)(Renderer* renderer, uint32_t color, float alpha);
+     int32_t (*createSpriteFromSurface)(Renderer* renderer, int32_t surfaceID, int32_t x, int32_t y, int32_t w, int32_t h, bool removeback, bool smooth, int32_t xorig, int32_t yorig);
+     void (*deleteSprite)(Renderer* renderer, int32_t spriteIndex);
++    // Optional: build a sprite from decoded RGBA pixels (a horizontal strip of `frames` frames).
++    // targetSprite >= 0 replaces that sprite's frames in place (sprite_replace); -1 allocates a new sprite. Returns the sprite index or -1.
++    int32_t (*createSpriteFromPixels)(Renderer* renderer, const uint8_t* rgba, int32_t w, int32_t h, int32_t frames, int32_t xorig, int32_t yorig, int32_t targetSprite);
+     BlendFactors (*gpuGetBlendFactors)(Renderer* renderer);
+     int32_t (*gpuGetBlendMode)(Renderer* renderer);
+     void (*gpuSetBlendMode)(Renderer* renderer, int32_t mode);
+diff --git a/src/vm_builtins.c b/src/vm_builtins.c
+index 4cbc295..9f47b57 100644
+--- a/src/vm_builtins.c
++++ b/src/vm_builtins.c
+@@ -28,6 +28,7 @@
+ 
+ #include "rvalue.h"
+ #include "stb_ds.h"
++#include "stb_image.h"
+ #include "text_utils.h"
+ #include "collision.h"
+ #include "ini.h"
+@@ -13384,10 +13385,89 @@ static RValue builtin_surface_get_texture(VMContext* ctx, RValue* args, MAYBE_UN
+ }
+ 
+ // Sprite functions
+-static RValue builtin_sprite_add(VMContext* ctx, RValue* args, MAYBE_UNUSED int32_t argCount) {
+-    logStubbedFunction(ctx, "sprite_add");
+-    // Return 1, so that a sprite_exists check passes
+-    return RValue_makeInt32(1);
++
++// Decodes an image file (png/jpg/gif/bmp) from the game's file system to RGBA. Caller frees with stbi_image_free.
++static uint8_t* loadImageFileRGBA(VMContext* ctx, const char* path, bool removeback, int32_t* outW, int32_t* outH) {
++    FileSystem* fs = ctx->runner->fileSystem;
++    if (fs == nullptr || path == nullptr) return nullptr;
++    uint8_t* data = nullptr;
++    int32_t size = 0;
++    if (!fs->vtable->readFileBinary(fs, path, &data, &size) || data == nullptr) {
++        logWarn("[sprite_add] Could not read image \"%s\"\n", path);
++        return nullptr;
++    }
++    int w = 0, h = 0, channels = 0;
++    uint8_t* pixels = stbi_load_from_memory(data, size, &w, &h, &channels, 4);
++    free(data);
++    if (pixels == nullptr) {
++        logWarn("[sprite_add] Could not decode image \"%s\"\n", path);
++        return nullptr;
++    }
++    if (removeback) {
++        // GameMaker: the bottom-left pixel's colour becomes transparent.
++        uint32_t back;
++        memcpy(&back, pixels + (size_t) (h - 1) * (size_t) w * 4, 4);
++        for (size_t i = 0; (size_t) w * (size_t) h > i; i++) {
++            uint32_t px;
++            memcpy(&px, pixels + i * 4, 4);
++            if (px == back) pixels[i * 4 + 3] = 0;
++        }
++    }
++    *outW = w;
++    *outH = h;
++    return pixels;
++}
++
++static int32_t createSpriteFromImageFile(VMContext* ctx, const char* path, int32_t frames, bool removeback, int32_t xorig, int32_t yorig, int32_t targetSprite) {
++    Renderer* renderer = ctx->runner->renderer;
++    if (renderer == nullptr || renderer->vtable->createSpriteFromPixels == nullptr) return -1;
++    int32_t w = 0, h = 0;
++    uint8_t* pixels = loadImageFileRGBA(ctx, path, removeback, &w, &h);
++    if (pixels == nullptr) return -1;
++    int32_t result = renderer->vtable->createSpriteFromPixels(renderer, pixels, w, h, frames, xorig, yorig, targetSprite);
++    stbi_image_free(pixels);
++    return result;
++}
++
++// sprite_add(fname, imgnumb, removeback, smooth, xorig, yorig)
++static RValue builtin_sprite_add(VMContext* ctx, RValue* args, int32_t argCount) {
++    REQUIRE_ARGC_AT_LEAST("sprite_add", 6, RValue_makeReal(-1.0));
++    char* path = RValue_toString(args[0], ctx->dataWin);
++    int32_t result = createSpriteFromImageFile(ctx, path, RValue_toInt32(args[1]), RValue_toBool(args[2]), RValue_toInt32(args[4]), RValue_toInt32(args[5]), -1);
++    free(path);
++    return RValue_makeReal((GMLReal) result);
++}
++
++// sprite_replace(ind, fname, imgnumb, removeback, smooth, xorig, yorig)
++static RValue builtin_sprite_replace(VMContext* ctx, RValue* args, int32_t argCount) {
++    REQUIRE_ARGC_AT_LEAST("sprite_replace", 7, RValue_makeUndefined());
++    int32_t spriteIndex = RValue_toInt32(args[0]);
++    if (0 > spriteIndex || (uint32_t) spriteIndex >= ctx->dataWin->sprt.count) return RValue_makeUndefined();
++    char* path = RValue_toString(args[1], ctx->dataWin);
++    createSpriteFromImageFile(ctx, path, RValue_toInt32(args[2]), RValue_toBool(args[3]), RValue_toInt32(args[5]), RValue_toInt32(args[6]), spriteIndex);
++    free(path);
++    return RValue_makeUndefined();
++}
++
++// background_add(fname, removeback, smooth): backed by a hidden dynamic sprite that owns the texture.
++static RValue builtin_background_add(VMContext* ctx, RValue* args, int32_t argCount) {
++    REQUIRE_ARGC_AT_LEAST("background_add", 3, RValue_makeReal(-1.0));
++    char* path = RValue_toString(args[0], ctx->dataWin);
++    int32_t spriteIndex = createSpriteFromImageFile(ctx, path, 1, RValue_toBool(args[1]), 0, 0, -1);
++    free(path);
++    if (0 > spriteIndex) return RValue_makeReal(-1.0);
++
++    DataWin* dw = ctx->dataWin;
++    uint32_t bgIndex = dw->bgnd.count++;
++    dw->bgnd.backgrounds = (Background *)safeRealloc(dw->bgnd.backgrounds, dw->bgnd.count * sizeof(Background));
++    Background* bg = &dw->bgnd.backgrounds[bgIndex];
++    memset(bg, 0, sizeof(Background));
++    char name[32];
++    snprintf(name, sizeof(name), "__newbackground%u", bgIndex);
++    bg->name = safeStrdup(name);
++    bg->present = true;
++    bg->tpagIndex = dw->sprt.sprites[spriteIndex].tpagIndices[0];
++    return RValue_makeReal((GMLReal) bgIndex);
+ }
+ 
+ static RValue builtin_sprite_exists(VMContext* ctx, RValue* args, MAYBE_UNUSED int32_t argCount) {
+@@ -13779,8 +13859,21 @@ static RValue builtin_color_get_value(MAYBE_UNUSED VMContext* ctx, RValue* args,
+ }
+ 
+ // Display stubs
+-STUB_RETURN_VALUE(display_get_width, 640.0)
+-STUB_RETURN_VALUE(display_get_height, 480.0)
++static RValue builtin_display_get_width(VMContext* ctx, MAYBE_UNUSED RValue* args, MAYBE_UNUSED int32_t argCount) {
++    Runner* runner = ctx->runner;
++    int32_t w = 0, h = 0;
++    if (runner != nullptr && runner->getDisplaySize != nullptr && runner->getDisplaySize(&w, &h)) return RValue_makeReal((GMLReal) w);
++    logStubbedFunction(ctx, "display_get_width");
++    return RValue_makeReal(640.0);
++}
++
++static RValue builtin_display_get_height(VMContext* ctx, MAYBE_UNUSED RValue* args, MAYBE_UNUSED int32_t argCount) {
++    Runner* runner = ctx->runner;
++    int32_t w = 0, h = 0;
++    if (runner != nullptr && runner->getDisplaySize != nullptr && runner->getDisplaySize(&w, &h)) return RValue_makeReal((GMLReal) h);
++    logStubbedFunction(ctx, "display_get_height");
++    return RValue_makeReal(480.0);
++}
+ 
+ static int32_t resolveGuiWidth(Runner* runner) {
+     if (runner->guiWidth > 0) return runner->guiWidth;
+@@ -25301,6 +25394,8 @@ void VMBuiltins_registerAll(VMContext* ctx) {
+ 
+     // Sprite info
+     VM_registerBuiltin(ctx, "sprite_add", builtin_sprite_add);
++    VM_registerBuiltin(ctx, "sprite_replace", builtin_sprite_replace);
++    VM_registerBuiltin(ctx, "background_add", builtin_background_add);
+     VM_registerBuiltin(ctx, "sprite_exists", builtin_sprite_exists);
+     VM_registerBuiltin(ctx, "sprite_get_width", builtin_sprite_get_width);
+     VM_registerBuiltin(ctx, "sprite_get_height", builtin_sprite_get_height);

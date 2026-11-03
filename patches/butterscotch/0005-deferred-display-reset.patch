@@ -1,0 +1,45 @@
+diff --git a/src/loop.c b/src/loop.c
+index 42ef176..8e3d736 100644
+--- a/src/loop.c
++++ b/src/loop.c
+@@ -1372,7 +1372,16 @@ int loop(CommandLineArgs args, const char *argv0) {
+                 renderer->vtable->endFrameInit(renderer);
+                 Runner_drawPost(runner, fbWidth, fbHeight);
+                 renderer->vtable->endFrameEnd(renderer);
+-                Runner_drawGUI(runner, fbWidth, fbHeight, gameW, gameH);
++                // When the game draws the application surface itself (application_surface_draw_enable(false)),
++                // GameMaker sizes the default GUI layer to the window, not the game. AM2R relies on this:
++                // it positions its HUD with window_get_width/height in Draw GUI.
++                if (runner->appSurfaceAutoDraw) {
++                    Runner_drawGUI(runner, fbWidth, fbHeight, gameW, gameH);
++                } else {
++                    Runner_drawGUI(runner, fbWidth, fbHeight, fbWidth, fbHeight);
++                }
++
++                Runner_applyPendingDisplayReset(runner);
+ 
+                 if (showDebugOverlay && renderer->vtable->drawTextUI != nullptr) {
+                     renderer->vtable->beginGUI(renderer, fbWidth, fbHeight, 0, 0, fbWidth, fbHeight, RENDER_TARGET_HOST_FRAMEBUFFER);
+diff --git a/src/runner.c b/src/runner.c
+index a4feef1..4750103 100644
+--- a/src/runner.c
++++ b/src/runner.c
+@@ -5400,3 +5400,18 @@ void Runner_free(Runner* runner) {
+         free(runner->windowTitle);
+     free(runner);
+ }
++
++// GameMaker 1.4 handles display_reset() by recreating the graphics device once the frame is done, losing every surface
++// except the application surface. Games rely on it to rebuild surfaces at a new size: AM2R 1.5.5 creates its widescreen
++// view surface on the first frame (before its width is known) and only recreates it when surface_exists() turns false.
++void Runner_applyPendingDisplayReset(Runner* runner) {
++    if (!runner->pendingDisplayReset) return;
++    runner->pendingDisplayReset = false;
++    Renderer* renderer = runner->renderer;
++    if (renderer == nullptr || renderer->vtable->surfaceExists == nullptr || renderer->vtable->surfaceFree == nullptr) return;
++    for (int32_t id = 0; 4096 > id; id++) {
++        if (id == runner->applicationSurfaceId) continue;
++        if (renderer->vtable->surfaceExists(renderer, id)) renderer->vtable->surfaceFree(renderer, id);
++    }
++    logInfo("Runner: display_reset applied, surfaces lost\n");
++}

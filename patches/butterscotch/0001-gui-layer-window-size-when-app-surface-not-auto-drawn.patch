@@ -1,0 +1,20 @@
+diff --git a/src/loop.c b/src/loop.c
+index 42ef176..7395dcb 100644
+--- a/src/loop.c
++++ b/src/loop.c
+@@ -1372,7 +1372,14 @@ int loop(CommandLineArgs args, const char *argv0) {
+                 renderer->vtable->endFrameInit(renderer);
+                 Runner_drawPost(runner, fbWidth, fbHeight);
+                 renderer->vtable->endFrameEnd(renderer);
+-                Runner_drawGUI(runner, fbWidth, fbHeight, gameW, gameH);
++                // When the game draws the application surface itself (application_surface_draw_enable(false)),
++                // GameMaker sizes the default GUI layer to the window, not the game. AM2R relies on this:
++                // it positions its HUD with window_get_width/height in Draw GUI.
++                if (runner->appSurfaceAutoDraw) {
++                    Runner_drawGUI(runner, fbWidth, fbHeight, gameW, gameH);
++                } else {
++                    Runner_drawGUI(runner, fbWidth, fbHeight, fbWidth, fbHeight);
++                }
+ 
+                 if (showDebugOverlay && renderer->vtable->drawTextUI != nullptr) {
+                     renderer->vtable->beginGUI(renderer, fbWidth, fbHeight, 0, 0, fbWidth, fbHeight, RENDER_TARGET_HOST_FRAMEBUFFER);

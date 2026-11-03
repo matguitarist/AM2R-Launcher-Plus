@@ -1,0 +1,94 @@
+diff --git a/src/runner.h b/src/runner.h
+index d85955c..f751a50 100644
+--- a/src/runner.h
++++ b/src/runner.h
+@@ -756,6 +756,8 @@ struct Runner {
+     int32_t applicationSurfaceId;
+     void (*setWindowTitle)(const char* title);
+     bool (*getWindowSize)(int32_t* outW, int32_t* outH);
++    // Optional: display size in pixels (display_get_width/height). nullptr = fall back to 640x480.
++    bool (*getDisplaySize)(int32_t* outW, int32_t* outH);
+     void (*setWindowSize)(int32_t width, int32_t height);
+     bool (*getWindowPosition)(int32_t* outX, int32_t* outY);
+     void (*setWindowPosition)(int32_t x, int32_t y);
+diff --git a/src/vm_builtins.c b/src/vm_builtins.c
+index 4cbc295..779fcd2 100644
+--- a/src/vm_builtins.c
++++ b/src/vm_builtins.c
+@@ -13779,8 +13779,21 @@ static RValue builtin_color_get_value(MAYBE_UNUSED VMContext* ctx, RValue* args,
+ }
+ 
+ // Display stubs
+-STUB_RETURN_VALUE(display_get_width, 640.0)
+-STUB_RETURN_VALUE(display_get_height, 480.0)
++static RValue builtin_display_get_width(VMContext* ctx, MAYBE_UNUSED RValue* args, MAYBE_UNUSED int32_t argCount) {
++    Runner* runner = ctx->runner;
++    int32_t w = 0, h = 0;
++    if (runner != nullptr && runner->getDisplaySize != nullptr && runner->getDisplaySize(&w, &h)) return RValue_makeReal((GMLReal) w);
++    logStubbedFunction(ctx, "display_get_width");
++    return RValue_makeReal(640.0);
++}
++
++static RValue builtin_display_get_height(VMContext* ctx, MAYBE_UNUSED RValue* args, MAYBE_UNUSED int32_t argCount) {
++    Runner* runner = ctx->runner;
++    int32_t w = 0, h = 0;
++    if (runner != nullptr && runner->getDisplaySize != nullptr && runner->getDisplaySize(&w, &h)) return RValue_makeReal((GMLReal) h);
++    logStubbedFunction(ctx, "display_get_height");
++    return RValue_makeReal(480.0);
++}
+ 
+ static int32_t resolveGuiWidth(Runner* runner) {
+     if (runner->guiWidth > 0) return runner->guiWidth;
+diff --git a/src/backends/appkit.m b/src/backends/appkit.m
+index 9623eb1..89b975e 100644
+--- a/src/backends/appkit.m
++++ b/src/backends/appkit.m
+@@ -88,6 +88,14 @@ static void appkitMapControllerToSlot(GCController *controller, GamepadSlot *slo
+         slot->axisValue[2] = extended.rightThumbstick.xAxis.value;
+         slot->axisValue[3] = -extended.rightThumbstick.yAxis.value;
+ 
++        // gp_select (8) = Options/View/Share, gp_start (9) = Menu/Start (matches SDL BACK/START).
++        if (extended.buttonOptions) {
++            slot->buttonDown[8] = extended.buttonOptions.pressed;
++            slot->buttonValue[8] = extended.buttonOptions.value;
++        }
++        slot->buttonDown[9] = extended.buttonMenu.pressed;
++        slot->buttonValue[9] = extended.buttonMenu.value;
++
+         if (extended.leftThumbstickButton) {
+             slot->buttonDown[10] = extended.leftThumbstickButton.pressed;
+             slot->buttonValue[10] = extended.leftThumbstickButton.value;
+@@ -425,6 +433,25 @@ static bool platformGetWindowFullscreen(void) {
+     return ([window styleMask] & NSWindowStyleMaskFullScreen) != 0;
+ }
+ 
++// display_get_width/height in pixels, in the same units as window_get_width/height.
++// In fullscreen, report the drawable area (on notched displays it is smaller than the panel),
++// so games that center on the display size fill the window exactly.
++static bool platformGetDisplaySize(int32_t *outW, int32_t *outH) {
++    if (window == nil) return false;
++    if (platformGetWindowFullscreen() && glView != nil) {
++        NSRect backing = [glView convertRectToBacking:[glView bounds]];
++        *outW = (int32_t) backing.size.width;
++        *outH = (int32_t) backing.size.height;
++        return true;
++    }
++    NSScreen *screen = [window screen] ?: [NSScreen mainScreen];
++    if (screen == nil) return false;
++    CGFloat scale = [screen backingScaleFactor];
++    *outW = (int32_t) (screen.frame.size.width * scale);
++    *outH = (int32_t) (screen.frame.size.height * scale);
++    return true;
++}
++
+ static void platformSetWindowFullscreen(bool fullscreen) {
+     if (fullscreen == platformGetWindowFullscreen()) return;
+     [window toggleFullScreen:nil];
+@@ -780,6 +807,7 @@ void platformInitFunctions(Runner *runner) {
+     runner->setWindowPosition = platformSetWindowPosition;
+     runner->getWindowFullscreen = platformGetWindowFullscreen;
+     runner->setWindowFullscreen = platformSetWindowFullscreen;
++    runner->getDisplaySize = platformGetDisplaySize;
+     runner->currentCursor = GML_CR_ARROW;
+ }
+ 
