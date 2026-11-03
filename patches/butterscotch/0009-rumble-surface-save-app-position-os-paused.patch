@@ -157,17 +157,18 @@ diff --git a/src/vm_builtins.c b/src/vm_builtins.c
 diff --git a/src/backends/appkit.m b/src/backends/appkit.m
 --- a/src/backends/appkit.m
 +++ b/src/backends/appkit.m
-@@ -4,6 +4,9 @@
+@@ -4,6 +4,10 @@
  #import <AppKit/AppKit.h>
  #import <Cocoa/Cocoa.h>
  #import <GameController/GameController.h>
 +#import <CoreHaptics/CoreHaptics.h>
++#include "log.h"
 +
 +static void rumbleStopAll(void);
  #include <dlfcn.h>
  #import <OpenGL/gl.h>
  
-@@ -771,6 +774,7 @@
+@@ -771,6 +775,7 @@
  }
  
  void platformExit(void) {
@@ -175,7 +176,7 @@ diff --git a/src/backends/appkit.m b/src/backends/appkit.m
      if (@available(macOS 10.15, *)) {
          [GCController stopWirelessControllerDiscovery];
      }
-@@ -839,11 +843,99 @@
+@@ -839,11 +844,127 @@
  
  static bool windowIsFocused(void) {
      return [window isKeyWindow];
@@ -198,9 +199,9 @@ diff --git a/src/backends/appkit.m b/src/backends/appkit.m
 +    [_player release];
 +    [_engine release];
 +    [super dealloc];
-+}
+ }
 +@end
-+
+ 
 +static NSMutableDictionary<NSString *, RumbleMotor *> *rumbleMotors = nil;
 +
 +static RumbleMotor *rumbleMotor(GCController *controller, GCHapticsLocality locality) API_AVAILABLE(macos(11.0)) {
@@ -211,6 +212,9 @@ diff --git a/src/backends/appkit.m b/src/backends/appkit.m
 +    GCDeviceHaptics *haptics = controller.haptics;
 +    CHHapticEngine *engine = [haptics.supportedLocalities containsObject:locality] ? [haptics createEngineWithLocality:locality] : nil;
 +    NSError *error = nil;
++    if (engine == nil && [haptics.supportedLocalities containsObject:locality]) {
++        logWarn("Rumble: %s could not create a haptic engine for %s\n", controller.vendorName.UTF8String ?: "controller", locality.UTF8String);
++    }
 +    CHHapticEvent *event = [[[CHHapticEvent alloc] initWithEventType:CHHapticEventTypeHapticContinuous
 +        parameters:@[[[[CHHapticEventParameter alloc] initWithParameterID:CHHapticEventParameterIDHapticIntensity value:1.0f] autorelease],
 +                     [[[CHHapticEventParameter alloc] initWithParameterID:CHHapticEventParameterIDHapticSharpness value:0.2f] autorelease]]
@@ -218,6 +222,10 @@ diff --git a/src/backends/appkit.m b/src/backends/appkit.m
 +    CHHapticPattern *pattern = engine ? [[[CHHapticPattern alloc] initWithEvents:@[event] parameters:@[] error:&error] autorelease] : nil;
 +    id<CHHapticAdvancedPatternPlayer> player = pattern && [engine startAndReturnError:&error] ? [engine createAdvancedPlayerWithPattern:pattern error:&error] : nil;
 +    if (player == nil) {
++        if (engine != nil) {
++            logWarn("Rumble: %s %s failed: %s\n", controller.vendorName.UTF8String ?: "controller", locality.UTF8String,
++                    error.localizedDescription.UTF8String ?: "unknown error");
++        }
 +        rumbleMotors[key] = (RumbleMotor *)[NSNull null];
 +        return nil;
 +    }
@@ -228,8 +236,8 @@ diff --git a/src/backends/appkit.m b/src/backends/appkit.m
 +    engine.resetHandler = ^{ motor.playing = NO; [motor.engine startAndReturnError:nil]; };
 +    rumbleMotors[key] = motor;
 +    return motor;
- }
- 
++}
++
 +static void rumbleSet(RumbleMotor *motor, float level) {
 +    if (motor == nil || fabsf(level - motor.level) < 0.01f) return;
 +    motor.level = level;
@@ -247,10 +255,31 @@ diff --git a/src/backends/appkit.m b/src/backends/appkit.m
 +}
 +
 +static void platformSetGamepadVibration(int32_t device, float left, float right) {
++    static bool loggedRequest = false;
++    if (!loggedRequest && (left > 0 || right > 0)) {
++        loggedRequest = true;
++        logInfo("Rumble: the game asked device %d for left %.2f, right %.2f\n", device, left, right);
++    }
 +    if (@available(macOS 11.0, *)) {
 +        NSArray<GCController *> *controllers = [GCController controllers];
-+        if (device < 0 || device >= (int32_t) MIN((NSUInteger) MAX_GAMEPADS, controllers.count)) return;
++        if (device < 0 || device >= (int32_t) MIN((NSUInteger) MAX_GAMEPADS, controllers.count)) {
++            static bool loggedDevice = false;
++            if (!loggedDevice) {
++                loggedDevice = true;
++                logWarn("Rumble: device %d is not one of the %lu connected controllers\n", device, (unsigned long) controllers.count);
++            }
++            return;
++        }
 +        GCController *controller = controllers[device];
++        static NSMutableSet<NSString *> *reported = nil;
++        if (reported == nil) reported = [[NSMutableSet alloc] init];
++        NSString *name = controller.vendorName ?: @"controller";
++        if (![reported containsObject:name]) {
++            [reported addObject:name];
++            NSArray *localities = [[controller.haptics.supportedLocalities allObjects] sortedArrayUsingSelector:@selector(compare:)];
++            logInfo("Rumble: %s (%s): %s\n", name.UTF8String, controller.productCategory.UTF8String,
++                    controller.haptics == nil ? "no haptics on macOS" : [localities componentsJoinedByString:@", "].UTF8String);
++        }
 +        if (controller.haptics == nil) return;
 +        RumbleMotor *leftMotor = rumbleMotor(controller, GCHapticsLocalityLeftHandle);
 +        RumbleMotor *rightMotor = rumbleMotor(controller, GCHapticsLocalityRightHandle);

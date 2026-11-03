@@ -12,14 +12,15 @@ index 9643079..21097ee 100644
          if(NOT ENABLE_NOOP_RENDERER)
              message(FATAL_ERROR "BACKEND=noop requires ENABLE_NOOP_RENDERER=ON")
 diff --git a/src/backends/appkit.m b/src/backends/appkit.m
-index 9623eb1..6792281 100644
+index 9623eb1..04806c1 100644
 --- a/src/backends/appkit.m
 +++ b/src/backends/appkit.m
-@@ -4,7 +4,11 @@
+@@ -4,7 +4,12 @@
  #import <AppKit/AppKit.h>
  #import <Cocoa/Cocoa.h>
  #import <GameController/GameController.h>
 +#import <CoreHaptics/CoreHaptics.h>
++#include "log.h"
 +
 +static void rumbleStopAll(void);
  #include <dlfcn.h>
@@ -27,7 +28,7 @@ index 9623eb1..6792281 100644
  
  #include "common.h"
  #include "input_recording.h"
-@@ -19,6 +23,47 @@
+@@ -19,6 +24,47 @@
  
  #define USE_PRIVATE_API 0
  
@@ -75,7 +76,7 @@ index 9623eb1..6792281 100644
  enum {
      IDX_LT = 6,
      IDX_RT = 7,
-@@ -88,6 +133,14 @@ static void appkitMapControllerToSlot(GCController *controller, GamepadSlot *slo
+@@ -88,6 +134,14 @@ static void appkitMapControllerToSlot(GCController *controller, GamepadSlot *slo
          slot->axisValue[2] = extended.rightThumbstick.xAxis.value;
          slot->axisValue[3] = -extended.rightThumbstick.yAxis.value;
  
@@ -90,7 +91,7 @@ index 9623eb1..6792281 100644
          if (extended.leftThumbstickButton) {
              slot->buttonDown[10] = extended.leftThumbstickButton.pressed;
              slot->buttonValue[10] = extended.leftThumbstickButton.value;
-@@ -425,6 +478,25 @@ static bool platformGetWindowFullscreen(void) {
+@@ -425,6 +479,25 @@ static bool platformGetWindowFullscreen(void) {
      return ([window styleMask] & NSWindowStyleMaskFullScreen) != 0;
  }
  
@@ -116,7 +117,7 @@ index 9623eb1..6792281 100644
  static void platformSetWindowFullscreen(bool fullscreen) {
      if (fullscreen == platformGetWindowFullscreen()) return;
      [window toggleFullScreen:nil];
-@@ -702,6 +774,7 @@ bool platformInit(int32_t reqW, int32_t reqH, const char *title, bool headless,
+@@ -702,6 +775,7 @@ bool platformInit(int32_t reqW, int32_t reqH, const char *title, bool headless,
  }
  
  void platformExit(void) {
@@ -124,7 +125,7 @@ index 9623eb1..6792281 100644
      if (@available(macOS 10.15, *)) {
          [GCController stopWirelessControllerDiscovery];
      }
-@@ -772,19 +845,257 @@ static bool windowIsFocused(void) {
+@@ -772,19 +846,285 @@ static bool windowIsFocused(void) {
      return [window isKeyWindow];
  }
  
@@ -158,6 +159,9 @@ index 9623eb1..6792281 100644
 +    GCDeviceHaptics *haptics = controller.haptics;
 +    CHHapticEngine *engine = [haptics.supportedLocalities containsObject:locality] ? [haptics createEngineWithLocality:locality] : nil;
 +    NSError *error = nil;
++    if (engine == nil && [haptics.supportedLocalities containsObject:locality]) {
++        logWarn("Rumble: %s could not create a haptic engine for %s\n", controller.vendorName.UTF8String ?: "controller", locality.UTF8String);
++    }
 +    CHHapticEvent *event = [[[CHHapticEvent alloc] initWithEventType:CHHapticEventTypeHapticContinuous
 +        parameters:@[[[[CHHapticEventParameter alloc] initWithParameterID:CHHapticEventParameterIDHapticIntensity value:1.0f] autorelease],
 +                     [[[CHHapticEventParameter alloc] initWithParameterID:CHHapticEventParameterIDHapticSharpness value:0.2f] autorelease]]
@@ -165,6 +169,10 @@ index 9623eb1..6792281 100644
 +    CHHapticPattern *pattern = engine ? [[[CHHapticPattern alloc] initWithEvents:@[event] parameters:@[] error:&error] autorelease] : nil;
 +    id<CHHapticAdvancedPatternPlayer> player = pattern && [engine startAndReturnError:&error] ? [engine createAdvancedPlayerWithPattern:pattern error:&error] : nil;
 +    if (player == nil) {
++        if (engine != nil) {
++            logWarn("Rumble: %s %s failed: %s\n", controller.vendorName.UTF8String ?: "controller", locality.UTF8String,
++                    error.localizedDescription.UTF8String ?: "unknown error");
++        }
 +        rumbleMotors[key] = (RumbleMotor *)[NSNull null];
 +        return nil;
 +    }
@@ -194,10 +202,31 @@ index 9623eb1..6792281 100644
 +}
 +
 +static void platformSetGamepadVibration(int32_t device, float left, float right) {
++    static bool loggedRequest = false;
++    if (!loggedRequest && (left > 0 || right > 0)) {
++        loggedRequest = true;
++        logInfo("Rumble: the game asked device %d for left %.2f, right %.2f\n", device, left, right);
++    }
 +    if (@available(macOS 11.0, *)) {
 +        NSArray<GCController *> *controllers = [GCController controllers];
-+        if (device < 0 || device >= (int32_t) MIN((NSUInteger) MAX_GAMEPADS, controllers.count)) return;
++        if (device < 0 || device >= (int32_t) MIN((NSUInteger) MAX_GAMEPADS, controllers.count)) {
++            static bool loggedDevice = false;
++            if (!loggedDevice) {
++                loggedDevice = true;
++                logWarn("Rumble: device %d is not one of the %lu connected controllers\n", device, (unsigned long) controllers.count);
++            }
++            return;
++        }
 +        GCController *controller = controllers[device];
++        static NSMutableSet<NSString *> *reported = nil;
++        if (reported == nil) reported = [[NSMutableSet alloc] init];
++        NSString *name = controller.vendorName ?: @"controller";
++        if (![reported containsObject:name]) {
++            [reported addObject:name];
++            NSArray *localities = [[controller.haptics.supportedLocalities allObjects] sortedArrayUsingSelector:@selector(compare:)];
++            logInfo("Rumble: %s (%s): %s\n", name.UTF8String, controller.productCategory.UTF8String,
++                    controller.haptics == nil ? "no haptics on macOS" : [localities componentsJoinedByString:@", "].UTF8String);
++        }
 +        if (controller.haptics == nil) return;
 +        RumbleMotor *leftMotor = rumbleMotor(controller, GCHapticsLocalityLeftHandle);
 +        RumbleMotor *rightMotor = rumbleMotor(controller, GCHapticsLocalityRightHandle);
@@ -382,7 +411,7 @@ index 9623eb1..6792281 100644
      [glContext flushBuffer];
  }
  
-@@ -828,6 +1139,7 @@ bool platformHandleEvents(void)
+@@ -828,6 +1168,7 @@ bool platformHandleEvents(void)
                      g_runner->gamepads->connectedCount++;
                  }
              }
