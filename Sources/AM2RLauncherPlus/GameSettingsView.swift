@@ -57,8 +57,38 @@ struct GameSettingsView<Header: View>: View {
                         Text("Custom (set in the game)").tag(ControllerLayout.custom)
                     }
                     .disabled(!canWrite)
+                    Picker("Button Prompts", selection: promptChoice) {
+                        Text("Automatic (\((AppModel.connectedPrompts ?? settings.buttonPrompts).title))").tag(PromptChoice.automatic)
+                        Divider()
+                        ForEach([ButtonPrompts.xbox, .playStation, .nintendo, .coloredSNES], id: \.self) { set in
+                            Text(set.title).tag(PromptChoice.fixed(set))
+                        }
+                    }
+                    .disabled(!canWrite)
+                    .help("The buttons shown in the game's hints")
                     LabeledContent("Connected", value: controllers.names.isEmpty ? "No controller" : controllers.names.formatted(.list(type: .and)))
                 }
+                Section {
+                    Toggle(isOn: $settings.showTimer) {
+                        Text("In-Game Timer")
+                        Text("Shows the play time on the HUD")
+                    }
+                    Toggle(isOn: $settings.lowHealthAlarm) {
+                        Text("Low Health Alarm")
+                        Text("Beeps when your energy is critical")
+                    }
+                    Toggle(isOn: $settings.earlyBaby) {
+                        Text("Early Baby Metroid")
+                        Text("Lets the baby Metroid follow you anywhere, anytime")
+                    }
+                    Toggle(isOn: $settings.extremeLabMetroids) {
+                        Text("Extreme Lab Metroids")
+                        Text("More Genetics Lab Metroids, and they hit harder")
+                    }
+                } header: {
+                    Text("Extras")
+                }
+                .disabled(!canWrite)
                 Section("Language") {
                     if languages.isEmpty {
                         Text("This profile has no languages list.")
@@ -92,6 +122,22 @@ struct GameSettingsView<Header: View>: View {
     }
 
     /// "2× (640 × 480)", "Stretch"
+    /// Automatic follows the connected controller at Play; picking a set keeps it.
+    private var promptChoice: Binding<PromptChoice> {
+        Binding {
+            profile.automaticPrompts ? .automatic : .fixed(settings.buttonPrompts)
+        } set: { choice in
+            switch choice {
+            case .automatic:
+                profile.automaticPrompts = true
+                if let prompts = AppModel.connectedPrompts { settings.buttonPrompts = prompts }
+            case .fixed(let set):
+                profile.automaticPrompts = false
+                settings.buttonPrompts = set
+            }
+        }
+    }
+
     private func scaleTitle(_ scale: Int) -> String {
         if scale == 0 { return "Stretch" }
         let width = settings.widescreen ? 426 : 320
@@ -117,6 +163,11 @@ struct GameSettingsView<Header: View>: View {
             saveError = "Unable to save the game settings: \(error.localizedDescription)"
         }
     }
+}
+
+private enum PromptChoice: Hashable {
+    case automatic
+    case fixed(ButtonPrompts)
 }
 
 private struct LoadKey: Equatable {

@@ -282,40 +282,38 @@ Acceptance:
 - [snap] The Mods page lists installed mods with Play, and the community mod list (gitlab.com/Miepee/AM2R-Mods) by group with Get; offline it says so with Try Again.
 Status: todo
 
-## M6 Our patch (0.4.0)
+## M6 Game extras and Randovania (0.4.0)
 
-One game patch of our own, "AM2R Launcher Plus patch", built with UndertaleModLib (a .NET tool on the developer's Mac only) and shipped in the app as an xdelta against the Community Updates game.ios the launcher installs. Players need no tools. Its features read keys the launcher writes to config.ini, so one patch serves every combination of settings. It is rebuilt for each Community Updates release; a profile on another version plays unpatched.
+Community Updates 1.5.5 already has prompt sets and extra options in config.ini's [Extras], set from its own Extras menu (Controller Tips only appears there while a gamepad is connected). The launcher sets them from the Play page. Tweaks the game lacks need our own game patch, built with UndertaleModLib on the developer's Mac (later, see "Later").
 
 ### S-034 Button prompts that match my controller
-As the player with a PlayStation, Switch or other controller, I see that controller's buttons in the game's hints and menus, not Xbox letters.
+As the player with a PlayStation, Switch or other controller, I see that controller's buttons in the game's hints, not Xbox letters.
 Screens: play (Controller section)
-Depends: S-011, S-033
+Depends: S-011
 Thimble: 97133751
-Notes: AM2R draws prompts with get_button_sprite. The patch adds prompt sprite sets we draw ourselves (no console maker's art) and picks one by [Control] ButtonPrompts in config.ini. The launcher writes it from the connected controller (GCController productCategory), or from the player's choice.
+Notes: [Extras] Controller: 0 Xbox, 1 PlayStation, 2 Nintendo Pro, 3 Colored SNES, 4 MOGA, 5 OUYA (get_xjoybtnsprite). Automatic is a launcher choice kept on the profile: at Play it writes the set of the connected controller (GCController productCategory). Mods built on AM2R 1.1 ignore the key.
 UX:
-- Flow: Play page > Controller > Button Prompts: Automatic (default), Xbox, PlayStation, Nintendo, Generic.
-- States: patch not available for this profile's version -> the picker is off, with footer "Button prompts need Community Updates <version>."
-- Words: "Button Prompts", "Automatic (matches your controller)".
+- Flow: Play page > Controller > Button Prompts: Automatic (default), Xbox, PlayStation, Nintendo, Colored SNES.
+- Words: "Button Prompts", "Automatic (<set>)" naming the set it would use now.
 Acceptance:
-- [unit] A controller's product category maps to a prompt set; unknown ones get Generic.
-- [unit] The patch applies to the shipped Community Updates game.ios and the result starts with FORM.
-- [self] A patched profile with ButtonPrompts set starts and ends cleanly.
+- [unit] A controller's product category maps to a prompt set; unknown ones get Xbox.
+- [unit] The set is read from and written to [Extras] Controller, leaving other lines as they were.
+- [self] Automatic writes the connected controller's set at Play; a fixed choice is kept.
 - [manual] With a PlayStation controller, in-game hints show the PlayStation shapes.
 Status: todo
 
-### S-035 Comfort tweaks
-As the player, I turn on small changes that make AM2R easier to live with, each one on its own.
-Screens: play (Tweaks section)
+### S-035 Game extras
+As the player, I turn on the game's extra options from the launcher: the in-game timer, the low health alarm, the early baby Metroid, and extreme lab Metroids.
+Screens: play (Extras section)
 Depends: S-034
 Thimble: 8c36e1da
-Notes: Same patch, one config.ini key per tweak under [LauncherPlus]. First set: skip item get cutscenes' fanfare wait, faster save station, metroid counter per area on the map.
+Notes: [Extras] DisplayIGT (0), LowHealthWarning (1), EarlyBaby (0), ExtremeLabMonsters (0); missing keys take the game's defaults. Names and descriptions follow the game's Extras menu.
 UX:
-- Flow: Play page > Tweaks: one toggle per tweak, each with a one-line description; all off by default.
-- States: patch not available -> the section says why, as in S-034.
+- Flow: Play page > Extras: one toggle per option with its one-line description.
 Acceptance:
-- [unit] Each tweak toggle writes its key and leaves the rest of config.ini as it was.
-- [self] With every tweak on, the patched game starts and ends cleanly.
-- [manual] Each tweak does what its description says in a real game.
+- [unit] Each option is read with the game's default and written without touching other lines.
+- [snap] The Extras section shows four toggles with descriptions.
+- [manual] The in-game timer shows on the HUD after turning it on.
 Status: todo
 
 ### S-036 Play a Randovania seed
@@ -335,6 +333,7 @@ Status: todo
 
 ## Later
 - Metal renderer and MetalFX upscaling in Butterscotch (a4f648ca)
+- Our own game patch (UndertaleModLib, .NET on the developer Mac) for tweaks Community Updates lacks: shorter item fanfare, faster save stations
 - Mod browser (b9e9edd1), speedrun timer (ebb0cbde), Discord (bc5c6cc0)
 - CLI / MCP (3d23b0ab), Rust data.win tools (c28e1acf), gmloader route (3bcc89ab)
 - Localization of the launcher

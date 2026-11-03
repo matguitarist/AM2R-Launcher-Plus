@@ -79,6 +79,13 @@ enum SelfTest {
                 try? original.write(to: saves)
                 model.applyFirstSettings(to: tuned)
                 check("the player's later layout choice stands", GameSettings.read(from: saves).controller == .original)
+                // S-034: Automatic prompts follow the controller; a picked set stays.
+                model.applyAutomaticPrompts(to: tuned, connected: .playStation)
+                check("automatic button prompts follow the connected controller", GameSettings.read(from: saves).buttonPrompts == .playStation)
+                tuned.automaticPrompts = false
+                model.applyAutomaticPrompts(to: tuned, connected: .nintendo)
+                check("a picked prompt set is kept", GameSettings.read(from: saves).buttonPrompts == .playStation
+                      && GameSettings.read(from: saves).controller == .original)
                 try? FileManager.default.removeItem(at: saves)
                 context.delete(tuned)
                 try? context.save()

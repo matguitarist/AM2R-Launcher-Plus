@@ -113,6 +113,30 @@ extension ControllerLayout {
     }
 }
 
+/// The button pictures in the game's hints: [Extras] Controller, the game's Extras > Controller Tips (S-034).
+public enum ButtonPrompts: Int, CaseIterable, Codable, Sendable {
+    case xbox = 0, playStation = 1, nintendo = 2, coloredSNES = 3, moga = 4, ouya = 5
+
+    public var title: String {
+        switch self {
+        case .xbox: "Xbox"
+        case .playStation: "PlayStation"
+        case .nintendo: "Nintendo"
+        case .coloredSNES: "Colored SNES"
+        case .moga: "MOGA"
+        case .ouya: "OUYA"
+        }
+    }
+
+    /// The set for a controller, from GCController's productCategory ("DualSense", "Switch Pro Controller", "Xbox One"…).
+    public static func matching(productCategory: String) -> ButtonPrompts {
+        let name = productCategory.lowercased()
+        if ["dualshock", "dualsense", "playstation"].contains(where: name.contains) { return .playStation }
+        if ["switch", "joy-con", "nintendo"].contains(where: name.contains) { return .nintendo }
+        return .xbox
+    }
+}
+
 /// The settings the launcher shows for a profile, read from and written to its config.ini (S-010 to S-012).
 /// Values and limits follow the game's own options menu (oOptionsDisplay):
 /// windowed, Scale 1-4 is the window size (320 x 240 times Scale, 0 counts as 1);
@@ -124,6 +148,12 @@ public struct GameSettings: Equatable, Sendable {
     /// Index into lang/languages.txt.
     public var language = 0
     public var controller = ControllerLayout.mac
+    /// [Extras], with the game's defaults when a key is missing (S-034, S-035).
+    public var buttonPrompts = ButtonPrompts.xbox
+    public var showTimer = false
+    public var lowHealthAlarm = true
+    public var earlyBaby = false
+    public var extremeLabMetroids = false
 
     public init() {}
 
@@ -137,6 +167,12 @@ public struct GameSettings: Equatable, Sendable {
         widescreen = int("Widescreen") != 0
         language = max(0, int("Language"))
         controller = ControllerLayout.detect(in: ini)
+        func extra(_ key: String, _ fallback: Int) -> Int { ini.value(key, in: "Extras").flatMap(Double.init).map { Int($0) } ?? fallback }
+        buttonPrompts = ButtonPrompts(rawValue: extra("Controller", 0)) ?? .xbox
+        showTimer = extra("DisplayIGT", 0) != 0
+        lowHealthAlarm = extra("LowHealthWarning", 1) != 0
+        earlyBaby = extra("EarlyBaby", 0) != 0
+        extremeLabMetroids = extra("ExtremeLabMonsters", 0) != 0
         clampScale()
     }
 
@@ -152,6 +188,15 @@ public struct GameSettings: Equatable, Sendable {
         ini.set("Widescreen", to: widescreen ? "1" : "0", in: "Screen")
         ini.set("Language", to: String(language), in: "Screen")
         controller.apply(to: &ini)
+        // An extra still at the game's default and not in the file yet stays out of it.
+        func extra(_ key: String, _ value: Int, default fallback: Int) {
+            if value != fallback || ini.value(key, in: "Extras") != nil { ini.set(key, to: String(value), in: "Extras") }
+        }
+        extra("Controller", buttonPrompts.rawValue, default: 0)
+        extra("DisplayIGT", showTimer ? 1 : 0, default: 0)
+        extra("LowHealthWarning", lowHealthAlarm ? 1 : 0, default: 1)
+        extra("EarlyBaby", earlyBaby ? 1 : 0, default: 0)
+        extra("ExtremeLabMonsters", extremeLabMetroids ? 1 : 0, default: 0)
     }
 
     // MARK: Files

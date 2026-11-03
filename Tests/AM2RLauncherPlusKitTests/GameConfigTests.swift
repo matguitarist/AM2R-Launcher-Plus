@@ -140,6 +140,31 @@ struct GameSettingsTests {
         #expect(!FileManager.default.fileExists(atPath: GameSettings.configFile(in: saves).path))
     }
 
+    @Test func extrasUseTheGamesDefaultsAndKeepOtherLines() {
+        var ini = IniFile(text: "[Extras]\r\nGBFilter=\"2\"\r\nController=\"1.000000\"\r\n")
+        var settings = GameSettings(ini: ini)
+        #expect(settings.buttonPrompts == .playStation)
+        #expect(settings.lowHealthAlarm && !settings.showTimer && !settings.earlyBaby && !settings.extremeLabMetroids)
+        settings.buttonPrompts = .nintendo
+        settings.showTimer = true
+        settings.apply(to: &ini)
+        #expect(ini.value("GBFilter", in: "Extras") == "2")
+        #expect(ini.value("Controller", in: "Extras") == "2")
+        #expect(ini.value("DisplayIGT", in: "Extras") == "1")
+        #expect(ini.value("LowHealthWarning", in: "Extras") == nil)
+        #expect(GameSettings(ini: ini) == settings)
+        #expect(GameSettings(ini: IniFile(text: "[Extras]\nController=\"9\"\n")).buttonPrompts == .xbox)
+    }
+
+    @Test func promptsMatchTheController() {
+        #expect(ButtonPrompts.matching(productCategory: "DualSense") == .playStation)
+        #expect(ButtonPrompts.matching(productCategory: "DualShock 4") == .playStation)
+        #expect(ButtonPrompts.matching(productCategory: "Switch Pro Controller") == .nintendo)
+        #expect(ButtonPrompts.matching(productCategory: "Nintendo Switch Joy-Con (L/R)") == .nintendo)
+        #expect(ButtonPrompts.matching(productCategory: "Xbox One") == .xbox)
+        #expect(ButtonPrompts.matching(productCategory: "Luna") == .xbox)
+    }
+
     @Test func realProfileLanguages() throws {
         guard let path = ProcessInfo.processInfo.environment["AM2R_PROFILE"] else { return }
         let languages = GameLanguages.list(in: URL(fileURLWithPath: path))

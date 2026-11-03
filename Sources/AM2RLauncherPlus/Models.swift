@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import GameController
 import SwiftData
 import AM2RLauncherPlusKit
 
@@ -54,6 +55,8 @@ final class Profile {
     var uuid: UUID = UUID()
     /// The Mac controller layout was written once (S-011); after that the player's choice stands.
     var controllerLayoutSet: Bool = false
+    /// Button prompts follow the connected controller at Play (S-034); off once the player picks a set.
+    var automaticPrompts: Bool = true
     /// Scanlines or CRT drawn over the game by the engine.
     var displayFilterRaw: String = DisplayFilter.none.rawValue
     /// Installed from a mod zip (S-033): native engine only, no Community Updates updates.
@@ -541,6 +544,21 @@ final class AppModel {
         try? container.mainContext.save()
     }
 
+    /// The prompt set for the first connected controller, or nil with none connected.
+    static var connectedPrompts: ButtonPrompts? {
+        GCController.controllers().first.map { ButtonPrompts.matching(productCategory: $0.productCategory) }
+    }
+
+    /// With Automatic prompts, writes the connected controller's set (S-034).
+    func applyAutomaticPrompts(to profile: Profile, connected: ButtonPrompts?) {
+        let saves = GameRunner.saveFolder(for: profile)
+        var settings = GameSettings.read(from: saves)
+        guard profile.automaticPrompts, let connected, connected != settings.buttonPrompts else { return }
+        settings.buttonPrompts = connected
+        try? settings.write(to: saves)
+        log(.info, "Play", "Button prompts: \(connected.title), for the connected controller")
+    }
+
     /// Plays the current profile on its engine (S-005, S-014).
     func play(extraArguments: [String] = []) {
         guard game == nil, let profile = currentProfile else { return }
@@ -554,6 +572,7 @@ final class AppModel {
         }
         let canWrite = canWriteSettings(for: profile)
         applyFirstSettings(to: profile)
+        if canWrite { applyAutomaticPrompts(to: profile, connected: Self.connectedPrompts) }
         let settings = GameSettings.read(from: saves)
         // Keeps the layout's keys current, e.g. a profile set up by an earlier build of the Mac layout.
         if canWrite, settings.controller == .mac { try? settings.write(to: saves) }
@@ -748,6 +767,7 @@ final class AppModel {
         copy.uuid = uuid
         copy.patchCommit = profile.patchCommit
         copy.controllerLayoutSet = profile.controllerLayoutSet
+        copy.automaticPrompts = profile.automaticPrompts
         copy.displayFilter = profile.displayFilter
         container.mainContext.insert(copy)
         try? container.mainContext.save()
