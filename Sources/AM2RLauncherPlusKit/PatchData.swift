@@ -176,13 +176,7 @@ public enum PatchData {
     }
 
     public static func profileInfo(_ xml: String) -> ProfileInfo? {
-        func attribute(_ name: String) -> String? {
-            guard let range = xml.range(of: "\(name)=\"") else { return nil }
-            let rest = xml[range.upperBound...]
-            guard let end = rest.firstIndex(of: "\"") else { return nil }
-            return String(rest[..<end])
-        }
-        guard let version = attribute("Version") else { return nil }
-        return ProfileInfo(name: attribute("Name") ?? "Community Updates", version: version, author: attribute("Author") ?? "")
+        guard let profile = ProfileXML(xml), let version = profile.version else { return nil }
+        return ProfileInfo(name: profile.name ?? "Community Updates", version: version, author: profile.author)
     }
 }

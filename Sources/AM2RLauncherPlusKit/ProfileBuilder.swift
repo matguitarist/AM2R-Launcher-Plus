@@ -27,11 +27,45 @@ public enum ProfileBuilder {
         public var info: PatchData.ProfileInfo
     }
 
+    /// Where the game patch, the extra files and profile.xml come from.
+    public struct Patch: Sendable {
+        /// An xdelta of AM2R 1.1's data.win.
+        public var gameDelta: URL
+        /// files_to_copy, when there is one.
+        public var filesToCopy: URL?
+        public var profileXML: URL
+
+        public init(gameDelta: URL, filesToCopy: URL?, profileXML: URL) {
+            self.gameDelta = gameDelta
+            self.filesToCopy = filesToCopy
+            self.profileXML = profileXML
+        }
+
+        /// A finished `PatchData.download` folder.
+        public static func communityUpdates(_ patchData: URL) -> Patch {
+            Patch(gameDelta: patchData.appending(path: "data/game.xdelta"),
+                  filesToCopy: patchData.appending(path: "data/files_to_copy", directoryHint: .isDirectory),
+                  profileXML: patchData.appending(path: "profile.xml"))
+        }
+
+        /// A folder holding an extracted `ModPackage` (S-033).
+        public static func mod(_ folder: URL, package: ModPackage) -> Patch {
+            Patch(gameDelta: folder.appending(path: package.gamePatch),
+                  filesToCopy: package.hasFilesToCopy ? folder.appending(path: "files_to_copy", directoryHint: .isDirectory) : nil,
+                  profileXML: folder.appending(path: "profile.xml"))
+        }
+    }
+
+    /// Builds Community Updates from a finished `PatchData.download` folder.
+    public static func build(source: URL, kind: AM2R11.Kind, root: String, patchData: URL, destination: URL,
+                             step: (@Sendable (Step) -> Void)? = nil) throws -> Result {
+        try build(source: source, kind: kind, root: root, patch: .communityUpdates(patchData), destination: destination, step: step)
+    }
+
     /// Builds into `destination` (replaced only when the new build is complete).
     /// - Parameters:
     ///   - source: the AM2R 1.1 zip or folder, with `root` the folder inside it that holds data.win.
-    ///   - patchData: a finished `PatchData.download` folder.
-    public static func build(source: URL, kind: AM2R11.Kind, root: String, patchData: URL, destination: URL,
+    public static func build(source: URL, kind: AM2R11.Kind, root: String, patch: Patch, destination: URL,
                              step: (@Sendable (Step) -> Void)? = nil) throws -> Result {
         let fm = FileManager.default
         let staging = destination.deletingLastPathComponent().appending(path: destination.lastPathComponent + ".partial", directoryHint: .isDirectory)
@@ -45,10 +79,10 @@ public enum ProfileBuilder {
             step?(.extract)
             let original = try extract(source: source, kind: kind, root: root, into: work)
 
-            // 2. data.win + game.xdelta = game.ios
+            // 2. data.win + the game patch = game.ios (the engine reads any system's game data)
             step?(.patch)
             do {
-                try VCDiff.apply(source: original.appending(path: "data.win"), patch: patchData.appending(path: "data/game.xdelta"),
+                try VCDiff.apply(source: original.appending(path: "data.win"), patch: patch.gameDelta,
                                  output: staging.appending(path: "game.ios"))
             } catch {
                 throw Failure.patchFailed("\(error)")
@@ -58,8 +92,8 @@ public enum ProfileBuilder {
             step?(.copy)
             do {
                 try copyMusic(from: original, to: staging)
-                try copyFilesToCopy(from: patchData.appending(path: "data/files_to_copy", directoryHint: .isDirectory), to: staging)
-                try fm.copyItem(at: patchData.appending(path: "profile.xml"), to: staging.appending(path: "profile.xml"))
+                if let files = patch.filesToCopy { try copyFilesToCopy(from: files, to: staging) }
+                try fm.copyItem(at: patch.profileXML, to: staging.appending(path: "profile.xml"))
             } catch let failure as Failure {
                 throw failure
             } catch {
