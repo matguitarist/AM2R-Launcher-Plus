@@ -524,9 +524,15 @@ final class AppModel {
         return all.first { $0.id == selection } ?? all.first
     }
 
+    /// Whether the launcher may write this profile's config.ini. A mod may be built on AM2R 1.1,
+    /// which breaks on a partial config.ini, so it waits until the mod has written its own.
+    func canWriteSettings(for profile: Profile) -> Bool {
+        !profile.isMod || GameSettings.gameHasWritten(in: GameRunner.saveFolder(for: profile))
+    }
+
     /// New profiles start with the Mac controller layout: Select = map, Start = pause (S-011).
     func applyFirstSettings(to profile: Profile) {
-        guard !profile.controllerLayoutSet else { return }
+        guard !profile.controllerLayoutSet, canWriteSettings(for: profile) else { return }
         let saves = GameRunner.saveFolder(for: profile)
         var settings = GameSettings.read(from: saves)
         settings.controller = .mac
@@ -540,14 +546,20 @@ final class AppModel {
         guard game == nil, let profile = currentProfile else { return }
         playError = nil
         lastGameFailure = nil
+        let saves = GameRunner.saveFolder(for: profile)
+        let canWrite = canWriteSettings(for: profile)
+        if !canWrite, GameSettings.removeLauncherOnlyConfig(in: saves) {
+            log(.info, "Play", "Removed a partial config.ini so \(profile.name) writes its own settings")
+        }
         applyFirstSettings(to: profile)
-        let settings = GameSettings.read(from: GameRunner.saveFolder(for: profile))
+        let settings = GameSettings.read(from: saves)
         // Keeps the layout's keys current, e.g. a profile set up by an earlier build of the Mac layout.
-        if settings.controller == .mac { try? settings.write(to: GameRunner.saveFolder(for: profile)) }
+        if canWrite, settings.controller == .mac { try? settings.write(to: saves) }
         log(.info, "Play", "Starting \(profile.name) (\(profile.version), \(profile.engine.title)) from \(profile.folder.path)")
         do {
             game = try GameRunner(profile: profile, extraArguments: extraArguments,
-                                  gamepadKeys: settings.controller.engineKeys,
+                                  // Until a mod writes its config.ini, it plays with its own layout.
+                                  gamepadKeys: canWrite ? settings.controller.engineKeys : nil,
                                   environment: profile.displayFilter.engineEnvironment) { [weak self] status in
                 self?.gameEnded(status: status)
             }
@@ -583,6 +595,8 @@ final class AppModel {
             profile.playTime += Date.now.timeIntervalSince(game.startedAt)
             profile.lastPlayedAt = .now
             try? container.mainContext.save()
+            // A mod's first run wrote its config.ini: now it gets the Mac layout.
+            applyFirstSettings(to: profile)
         }
         let seconds = Int(Date.now.timeIntervalSince(game.startedAt))
         log(status == 0 || game.stoppedByUser ? .info : .error, "Play",

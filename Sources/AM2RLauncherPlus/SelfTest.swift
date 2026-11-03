@@ -325,9 +325,19 @@ enum SelfTest {
                             check("a mod stays on the native engine", mod.engine == .native)
                             check("the unpacked mod is removed after install",
                                   ((try? FileManager.default.contentsOfDirectory(atPath: DataFolder.mods.path)) ?? []).isEmpty)
+                            let modSaves = GameRunner.saveFolder(for: mod)
+                            let modConfig = GameSettings.configFile(in: modSaves)
+                            check("a new mod gets no partial config.ini (AM2R 1.1 mods break on one)",
+                                  !FileManager.default.fileExists(atPath: modConfig.path) && !model.canWriteSettings(for: mod))
+                            // A config.ini an earlier build wrote is removed when the mod starts.
+                            try? GameSettings().write(to: modSaves)
                             model.play(extraArguments: ["--headless", "--exit-at-frame", "120"])
                             for _ in 0..<300 where model.game != nil { try? await Task.sleep(for: .milliseconds(100)) }
                             check("the mod plays and ends cleanly", model.lastGameFailure == nil && mod.lastPlayedAt != nil)
+                            check("a partial config.ini is gone, or the mod's own one has the Mac layout",
+                                  GameSettings.gameHasWritten(in: modSaves)
+                                      ? GameSettings.read(from: modSaves).controller == .mac
+                                      : !FileManager.default.fileExists(atPath: modConfig.path))
                             try? FileManager.default.removeItem(at: mod.folder)
                             try? FileManager.default.removeItem(at: GameRunner.saveFolder(for: mod))
                             try? FileManager.default.removeItem(at: GameRunner.logFolder(for: mod))

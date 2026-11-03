@@ -117,6 +117,23 @@ struct GameSettingsTests {
         #expect(GameLanguages.list(in: lang).isEmpty)
     }
 
+    @Test func partialConfigIsRemovedUntilTheGameWritesItsOwn() throws {
+        let saves = try folder()
+        defer { try? FileManager.default.removeItem(at: saves) }
+        #expect(!GameSettings.gameHasWritten(in: saves))
+        #expect(!GameSettings.removeLauncherOnlyConfig(in: saves))
+        // What an earlier launcher wrote for a mod built on AM2R 1.1: broken buttons, a 320 × 240 window.
+        try GameSettings().write(to: saves)
+        #expect(!GameSettings.gameHasWritten(in: saves))
+        #expect(GameSettings.removeLauncherOnlyConfig(in: saves))
+        #expect(!FileManager.default.fileExists(atPath: GameSettings.configFile(in: saves).path))
+        // The game's own file stays, with the launcher's keys merged in.
+        try "[Screen]\r\nFullscreen=\"1\"\r\n[Sound]\r\nSoundVolume=\"100\"\r\n".write(to: GameSettings.configFile(in: saves), atomically: true, encoding: .utf8)
+        #expect(GameSettings.gameHasWritten(in: saves))
+        #expect(!GameSettings.removeLauncherOnlyConfig(in: saves))
+        #expect(GameSettings.read(from: saves).fullscreen)
+    }
+
     @Test func realProfileLanguages() throws {
         guard let path = ProcessInfo.processInfo.environment["AM2R_PROFILE"] else { return }
         let languages = GameLanguages.list(in: URL(fileURLWithPath: path))

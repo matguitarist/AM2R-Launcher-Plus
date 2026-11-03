@@ -164,6 +164,23 @@ public struct GameSettings: Equatable, Sendable {
         return GameSettings(ini: IniFile(text: text))
     }
 
+    /// Whether the game wrote its own config.ini. AM2R 1.1, and the mods built on it, write one only
+    /// when none exists and read every key missing from it as a wrong value (button A = 7, Start = 19),
+    /// so the launcher must never create a partial one for them.
+    public static func gameHasWritten(in saveFolder: URL) -> Bool {
+        guard let text = try? String(contentsOf: configFile(in: saveFolder), encoding: .utf8) else { return false }
+        return IniFile(text: text).value("SoundVolume", in: "Sound") != nil
+    }
+
+    /// Removes a config.ini that holds only the launcher's keys, so the game writes its full one
+    /// on its next start. Returns whether it removed one.
+    @discardableResult
+    public static func removeLauncherOnlyConfig(in saveFolder: URL) -> Bool {
+        let file = configFile(in: saveFolder)
+        guard FileManager.default.fileExists(atPath: file.path), !gameHasWritten(in: saveFolder) else { return false }
+        return (try? FileManager.default.removeItem(at: file)) != nil
+    }
+
     /// Writes only the launcher's keys; every other line of config.ini stays as the game wrote it.
     public func write(to saveFolder: URL) throws {
         let file = Self.configFile(in: saveFolder)

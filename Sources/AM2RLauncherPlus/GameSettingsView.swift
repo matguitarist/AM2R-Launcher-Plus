@@ -14,18 +14,23 @@ struct GameSettingsView<Header: View>: View {
     @State private var languages: [GameLanguages.Language] = []
     @State private var loadedFor: UUID?
     @State private var saveError: String?
+    /// False for a mod that hasn't written its config.ini yet.
+    @State private var canWrite = true
     @State private var controllers = ControllerMonitor()
 
     var body: some View {
         Form {
                 Section {
-                    Toggle("Fullscreen", isOn: $settings.fullscreen)
-                    Picker(settings.fullscreen ? "Display Scale" : "Window Size", selection: $settings.scale) {
-                        ForEach(Array(settings.fullscreen ? GameSettings.fullscreenScales : GameSettings.scales), id: \.self) { scale in
-                            Text(scaleTitle(scale)).tag(scale)
+                    Group {
+                        Toggle("Fullscreen", isOn: $settings.fullscreen)
+                        Picker(settings.fullscreen ? "Display Scale" : "Window Size", selection: $settings.scale) {
+                            ForEach(Array(settings.fullscreen ? GameSettings.fullscreenScales : GameSettings.scales), id: \.self) { scale in
+                                Text(scaleTitle(scale)).tag(scale)
+                            }
                         }
+                        Toggle("Widescreen", isOn: $settings.widescreen)
                     }
-                    Toggle("Widescreen", isOn: $settings.widescreen)
+                    .disabled(!canWrite)
                     Picker("Filter", selection: Bindable(profile).displayFilter) {
                         ForEach(DisplayFilter.allCases, id: \.self) { Text($0.title).tag($0) }
                     }
@@ -41,6 +46,8 @@ struct GameSettingsView<Header: View>: View {
                 } footer: {
                     if model.isPlaying {
                         Text("Quit AM2R to change these settings.")
+                    } else if !canWrite {
+                        Text("\(profile.name) saves its own settings the first time it starts. Play it once, then change them here.")
                     }
                 }
                 Section("Controller") {
@@ -49,6 +56,7 @@ struct GameSettingsView<Header: View>: View {
                         Text("Original (Start = map)").tag(ControllerLayout.original)
                         Text("Custom (set in the game)").tag(ControllerLayout.custom)
                     }
+                    .disabled(!canWrite)
                     LabeledContent("Connected", value: controllers.names.isEmpty ? "No controller" : controllers.names.formatted(.list(type: .and)))
                 }
                 Section("Language") {
@@ -59,6 +67,7 @@ struct GameSettingsView<Header: View>: View {
                         Picker("Game Language", selection: $settings.language) {
                             ForEach(languages) { Text($0.name).tag($0.index) }
                         }
+                        .disabled(!canWrite)
                     }
                 }
                 EngineSection(profile: profile)
@@ -71,7 +80,8 @@ struct GameSettingsView<Header: View>: View {
         }
         .formStyle(.grouped)
         .disabled(model.isPlaying)
-        .task(id: profile.uuid) { load(profile) }
+        // Reloads after a game ends: a mod's first run writes its config.ini.
+        .task(id: LoadKey(profile: profile.uuid, playing: model.isPlaying)) { load(profile) }
         .onChange(of: settings) { old, new in
             guard loadedFor == profile.uuid, old != new else { return }
             var new = new
@@ -91,12 +101,14 @@ struct GameSettingsView<Header: View>: View {
     private func load(_ profile: Profile) {
         loadedFor = nil
         settings = GameSettings.read(from: GameRunner.saveFolder(for: profile))
+        canWrite = model.canWriteSettings(for: profile)
         languages = GameLanguages.list(in: profile.folder)
         if !languages.isEmpty, !languages.contains(where: { $0.index == settings.language }) { settings.language = 0 }
         loadedFor = profile.uuid
     }
 
     private func save(_ profile: Profile) {
+        guard canWrite else { return }
         do {
             try settings.write(to: GameRunner.saveFolder(for: profile))
             profile.controllerLayoutSet = true
@@ -105,6 +117,11 @@ struct GameSettingsView<Header: View>: View {
             saveError = "Unable to save the game settings: \(error.localizedDescription)"
         }
     }
+}
+
+private struct LoadKey: Equatable {
+    var profile: UUID
+    var playing: Bool
 }
 
 /// Names of the connected game controllers, kept current as they connect and disconnect.
