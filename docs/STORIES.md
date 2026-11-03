@@ -100,7 +100,7 @@ UX:
 - States: empty (no profile): Play page shows the welcome page instead; running: "Playing…" + Stop; done: "Last played just now · 2 h 14 min total".
 - Words: "Play", "Playing…", "Stop", tooltip on engine badge "Runs natively on Apple silicon".
 - Access: Play is the default button; Stop has ⌘.; badge has text, not just color.
-Status: doing
+Status: done
 
 ### S-006 See why the game stopped
 As the player, if the game quits with an error I can read the log.
