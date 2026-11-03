@@ -4,9 +4,12 @@ import SwiftUI
 
 /// Display, controller and language of one profile, written to its config.ini (S-010 to S-012).
 /// Shown on the Play page under the Play button: they belong to the profile, not the app.
-struct GameSettingsView: View {
+struct GameSettingsView<Header: View>: View {
     @Environment(AppModel.self) private var model
     let profile: Profile
+    /// Sits above the first section and scrolls with the form, so the page
+    /// has one scroll bar at the window edge.
+    @ViewBuilder var header: Header
     @State private var settings = GameSettings()
     @State private var languages: [GameLanguages.Language] = []
     @State private var loadedFor: UUID?
@@ -28,7 +31,13 @@ struct GameSettingsView: View {
                     }
                     .help("Draw scanlines or an old CRT screen over the game")
                 } header: {
-                    Text("Display")
+                    VStack(alignment: .leading, spacing: Space.xxl) {
+                        header
+                            .font(.body)
+                            .fontWeight(.regular)
+                            .frame(maxWidth: .infinity)
+                        Text("Display")
+                    }
                 } footer: {
                     if model.isPlaying {
                         Text("Quit AM2R to change these settings.")

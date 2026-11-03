@@ -15,9 +15,10 @@ struct InstallPage: View {
                     row(step)
                 }
             }
-            .frame(width: 440)
+            .frame(width: 440, alignment: .leading)
             .padding(Space.xxl)
-            .background(.quaternary.opacity(0.25), in: .rect(cornerRadius: 16))
+            .cardBackground()
+            .gridArea("install-steps", inset: Space.xxl)
             footer
         }
         .padding(Space.section)
@@ -36,6 +37,7 @@ struct InstallPage: View {
                 }
             }
             .frame(width: 20)
+            .gridProbe("icon-\(step)", area: "install-steps", edge: nil)
             VStack(alignment: .leading, spacing: Space.xs) {
                 Text(step.title)
                     .foregroundStyle(status == .pending ? .secondary : .primary)
@@ -53,6 +55,7 @@ struct InstallPage: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
+            .gridProbe("step-\(step)", area: "install-steps")
         }
         .accessibilityElement(children: .combine)
         .accessibilityValue(status.spoken)

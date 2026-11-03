@@ -48,14 +48,17 @@ struct WelcomePage: View {
                         .help(model.source?.path ?? "")
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .gridProbe("drop-content", area: "drop-zone")
             .padding(Space.xxl)
             .frame(width: 440, height: 200)
-            .background(.quaternary.opacity(dropTargeted ? 0.6 : 0.25), in: .rect(cornerRadius: 16))
+            .cardBackground(highlighted: dropTargeted)
+            .gridArea("drop-zone", inset: Space.xxl)
             .overlay {
-                RoundedRectangle(cornerRadius: 16)
+                RoundedRectangle(cornerRadius: Radius.card)
                     .strokeBorder(dropTargeted ? Palette.accent : Color.secondary.opacity(0.4), style: StrokeStyle(lineWidth: 2, dash: [8, 4]))
             }
-            .contentShape(.rect(cornerRadius: 16))
+            .contentShape(.rect(cornerRadius: Radius.card))
         }
         .buttonStyle(.plain)
         .disabled(isChecking)

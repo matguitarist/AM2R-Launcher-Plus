@@ -31,6 +31,7 @@ struct ContentView: View {
         @Bindable var model = model
         return List(SidebarItem.allCases, selection: $model.sidebar) { page in
             Label(page.title, systemImage: page.symbol)
+                .listItemTint(Palette.accent)
                 .tag(page)
         }
         .navigationSplitViewColumnWidth(min: 180, ideal: 212)
@@ -53,14 +54,11 @@ struct PlayPage: View {
             if let install = model.install {
                 InstallPage(state: install)
             } else if !model.forceWelcome, let profile = CurrentProfile.pick(profiles, selection: model.selection) {
-                VStack(spacing: 0) {
+                GameSettingsView(profile: profile) {
                     hero(profile)
-                        .padding(.top, Space.section)
-                        .padding(.bottom, Space.lg)
-                    GameSettingsView(profile: profile)
-                        .frame(maxWidth: 600)
+                        .padding(.top, Space.lg)
+                        .padding(.bottom, Space.sm)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             } else {
                 WelcomePage()
             }
@@ -93,7 +91,7 @@ struct UpdateBanner: View {
         .padding(.horizontal, Space.lg)
         .padding(.vertical, Space.md)
         .frame(width: 480)
-        .background(.quaternary.opacity(0.25), in: .rect(cornerRadius: 12))
+        .cardBackground(Radius.banner)
         .gridArea("update-banner", inset: Space.md)
         .accessibilityElement(children: .contain)
     }
@@ -117,7 +115,7 @@ struct FailureBanner: View {
         .padding(.horizontal, Space.lg)
         .padding(.vertical, Space.md)
         .frame(width: 480)
-        .background(.quaternary.opacity(0.25), in: .rect(cornerRadius: 12))
+        .cardBackground(Radius.banner)
         .gridArea("failure-banner", inset: Space.md)
         .accessibilityElement(children: .contain)
     }
@@ -128,7 +126,8 @@ extension PlayPage {
     func hero(_ profile: Profile) -> some View {
         VStack(spacing: Space.lg) {
             Text(profile.name)
-                .font(.largeTitle.bold())
+                .font(.largeTitle)
+                .fontWeight(.bold)
             HStack(spacing: Space.sm) {
                 Text("Version \(profile.version)")
                 Text("·")

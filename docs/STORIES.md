@@ -241,7 +241,8 @@ Thimble: 78530bc8, 5b37e6f7
 Acceptance:
 - [snap] Every page passes the mac-design and layout-grid checks in light and dark.
 - [manual] The app icon reads at 16 px in the Dock and Finder.
-Status: todo
+Notes: Icon is a play triangle over a planet with a small moon, on a teal gradient (checked at 16 pt with tools/icon_review.sh). Play page scrolls as one form; Welcome and Install pages carry grid probes; radii come from `Radius`.
+Status: done
 
 ### S-031 Game Mode
 Thimble: 78863e48
