@@ -20,6 +20,11 @@ public enum PatchData {
         public var commit: String
         public var files: [File]
         public var totalSize: Int { files.reduce(0) { $0 + $1.size } }
+
+        public init(commit: String, files: [File]) {
+            self.commit = commit
+            self.files = files
+        }
     }
 
     public enum Failure: Error, Equatable, Sendable {
@@ -88,6 +93,23 @@ public enum PatchData {
 
     private static func fetch(_ request: URLRequest, session: URLSession) async throws(Failure) -> (Data, URLResponse) {
         do { return try await session.data(for: request) } catch { throw .offline }
+    }
+
+    /// profile.xml of a commit, read without downloading the rest (S-020).
+    public static func profileInfo(commit: String, session: URLSession = .shared) async throws(Failure) -> ProfileInfo {
+        var request = URLRequest(url: URL(string: "https://raw.githubusercontent.com/\(owner)/\(repo)/\(commit)/profile.xml")!)
+        request.setValue("AM2RLauncherPlus", forHTTPHeaderField: "User-Agent")
+        let (data, response) = try await fetch(request, session: session)
+        guard let http = response as? HTTPURLResponse else { throw .badResponse }
+        guard http.statusCode == 200 else { throw .github(http.statusCode) }
+        guard let info = profileInfo(String(decoding: data, as: UTF8.self)) else { throw .badResponse }
+        return info
+    }
+
+    /// The manifest a finished download was made from, nil for a folder without one.
+    public static func installedManifest(in patchFolder: URL) -> Manifest? {
+        guard let data = try? Data(contentsOf: patchFolder.appending(path: "manifest.json")) else { return nil }
+        return try? JSONDecoder().decode(Manifest.self, from: data)
     }
 
     // MARK: Download

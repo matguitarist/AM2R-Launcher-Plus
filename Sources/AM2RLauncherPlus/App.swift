@@ -41,6 +41,12 @@ struct AM2RLauncherPlusApp: App {
                 Button("Stop") { model.confirmStop = true; model.sidebar = .play }
                     .keyboardShortcut(".")
                     .disabled(model.game == nil)
+                Button(model.checkingForUpdates ? "Checking for Game Updates…" : "Check for Game Updates") {
+                    model.sidebar = .play
+                    Task { await model.checkForUpdates(force: true) }
+                }
+                .keyboardShortcut("u")
+                .disabled(model.checkingForUpdates || model.currentProfile == nil)
                 Divider()
                 Menu("Engine") {
                     ForEach(Engine.allCases) { engine in

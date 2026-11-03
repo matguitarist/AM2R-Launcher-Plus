@@ -151,6 +151,8 @@ nonisolated enum DataFolder {
     }
 
     static var hashCache: URL { url.appending(path: "Caches/hashes.json") }
+    /// The last update check (S-020).
+    static var latestUpdate: URL { url.appending(path: "Caches/latest-update.json") }
     static var patchData: URL { url.appending(path: "PatchData", directoryHint: .isDirectory) }
     static var profiles: URL { url.appending(path: "Profiles", directoryHint: .isDirectory) }
 }
@@ -264,6 +266,11 @@ final class AppModel {
     /// Asks before installing Rosetta (engine picker, Game > Engine > Install Rosetta…).
     var confirmRosettaInstall = false
     var rosettaInstallError: String?
+    /// The newest patch data on GitHub at the last check (S-020).
+    var latestUpdate: UpdateCheck.Latest? = UpdateCheck.read(from: DataFolder.latestUpdate)
+    var checkingForUpdates = false
+    /// Only a check the player asked for reports a failure or "up to date".
+    var updateCheckMessage: String?
 
     init(container: ModelContainer) {
         self.container = container
@@ -410,6 +417,33 @@ final class AppModel {
             lastGameFailure = GameFailure(profile: game.profileID, log: game.log, status: status)
         }
         self.game = nil
+    }
+
+    /// Asks GitHub for the latest patch data, at most daily unless `force` (Game > Check for Game Updates).
+    func checkForUpdates(force: Bool = false) async {
+        guard !checkingForUpdates, force || UpdateCheck.isDue(lastCheck: latestUpdate?.checkedAt) else { return }
+        guard ((try? container.mainContext.fetchCount(FetchDescriptor<Profile>())) ?? 0) > 0 else { return }
+        checkingForUpdates = true
+        defer { checkingForUpdates = false }
+        updateCheckMessage = nil
+        do {
+            let latest = try await UpdateCheck.fetch(rosetta: source?.hasWindowsGame ?? false, known: latestUpdate)
+            latestUpdate = latest
+            try? UpdateCheck.write(latest, to: DataFolder.latestUpdate)
+            if force, let profile = currentProfile, availableUpdate(for: profile) == nil {
+                updateCheckMessage = "\(profile.name) is up to date."
+            }
+        } catch {
+            if force { updateCheckMessage = error.message }
+        }
+    }
+
+    /// The banner's title when the latest patch data is newer than what `profile` was built from.
+    func availableUpdate(for profile: Profile) -> String? {
+        guard let latestUpdate else { return nil }
+        let installed = PatchData.installedManifest(in: DataFolder.patchData.appending(path: profile.patchCommit, directoryHint: .isDirectory))
+        guard UpdateCheck.isNewer(latestUpdate.manifest, than: installed, installedCommit: profile.patchCommit) else { return nil }
+        return UpdateCheck.title(latestVersion: latestUpdate.version, installedVersion: profile.version)
     }
 
     /// Game > Engine and the engine picker (S-014). Rosetta builds the profile's AM2R.app first, once.

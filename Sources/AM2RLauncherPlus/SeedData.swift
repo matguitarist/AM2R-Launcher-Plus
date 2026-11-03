@@ -21,6 +21,7 @@ enum SeedData {
         let current = Profile(name: "Community Updates 1.5.5", version: "1.5.5")
         current.lastPlayedAt = Date.now.addingTimeInterval(-3_600)
         current.playTime = 2 * 3_600 + 14 * 60
+        current.patchCommit = String(repeating: "5", count: 40)
         context.insert(current)
         try? context.save()
         model.selection = current.id

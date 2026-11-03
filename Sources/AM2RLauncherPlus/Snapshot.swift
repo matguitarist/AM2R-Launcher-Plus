@@ -85,6 +85,19 @@ enum Snapshot {
                 }
                 model.previewPlaying = false
             }
+            // S-020: update-banner, a newer release than the seeded profile.
+            if only?.contains("update-banner") ?? true {
+                model.sidebar = .play
+                let saved = model.latestUpdate
+                model.latestUpdate = UpdateCheck.Latest(manifest: PatchData.Manifest(commit: String(repeating: "6", count: 40), files: []),
+                                                        version: "1.5.6", checkedAt: .now)
+                for mode in ["light", "dark"] {
+                    NSApp.appearance = NSAppearance(named: mode == "light" ? .aqua : .darkAqua)
+                    try? await Task.sleep(for: .seconds(0.8))
+                    capture(to: "\(dir)/update-banner-\(mode).png")
+                }
+                model.latestUpdate = saved
+            }
             // S-014: the engine picker when Rosetta isn't installed.
             if only?.contains("play-no-rosetta") ?? true {
                 model.sidebar = .play

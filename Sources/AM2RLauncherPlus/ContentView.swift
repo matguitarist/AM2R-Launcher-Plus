@@ -18,6 +18,10 @@ struct ContentView: View {
             SeedData.insertIfRequested(into: model)
             SelfTest.runIfRequested(model: model)
             Snapshot.runIfRequested(model: model, openSettings: openSettings)
+            // S-020: at most daily; snapshot and self-test runs stay offline.
+            if !SelfTest.requested && (ProcessInfo.processInfo.environment["APP_SNAPSHOT"] ?? "").isEmpty {
+                await model.checkForUpdates()
+            }
         }
     }
 
@@ -66,6 +70,26 @@ struct PlayPage: View {
     }
 }
 
+/// "Community Updates 1.5.6 is available" (S-020).
+struct UpdateBanner: View {
+    let title: String
+
+    var body: some View {
+        HStack(spacing: Space.lg) {
+            Label(title, systemImage: "arrow.down.circle.fill")
+                .foregroundStyle(Palette.accentText)
+                .gridProbe("update-message", area: "update-banner")
+            Spacer(minLength: Space.lg)
+        }
+        .padding(.horizontal, Space.lg)
+        .padding(.vertical, Space.md)
+        .frame(width: 480)
+        .background(.quaternary.opacity(0.25), in: .rect(cornerRadius: 12))
+        .gridArea("update-banner", inset: Space.md)
+        .accessibilityElement(children: .contain)
+    }
+}
+
 /// "AM2R stopped unexpectedly." with Show Log and Play Again (S-006).
 struct FailureBanner: View {
     @Environment(AppModel.self) private var model
@@ -106,6 +130,13 @@ extension PlayPage {
             playControls
             if let summary = PlayStats.summary(lastPlayed: profile.lastPlayedAt, playTime: profile.playTime) {
                 Text(summary)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+            if let update = model.availableUpdate(for: profile) {
+                UpdateBanner(title: update)
+            } else if let message = model.updateCheckMessage {
+                Text(message)
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }

@@ -107,6 +107,21 @@ enum SelfTest {
                 try? context.save()
             }
 
+            // S-020: the banner shows only for a profile built from older patch data.
+            do {
+                let old = model.addProfile(name: "Old", version: "1.5.5")
+                old.patchCommit = String(repeating: "a", count: 40)
+                let saved = model.latestUpdate
+                model.latestUpdate = UpdateCheck.Latest(manifest: PatchData.Manifest(commit: String(repeating: "b", count: 40), files: []),
+                                                        version: "1.5.6", checkedAt: .now)
+                check("a newer release shows the update banner", model.availableUpdate(for: old) == "Community Updates 1.5.6 is available")
+                old.patchCommit = String(repeating: "b", count: 40)
+                check("an up-to-date profile shows no banner", model.availableUpdate(for: old) == nil)
+                model.latestUpdate = saved
+                context.delete(old)
+                try? context.save()
+            }
+
             // S-014: Rosetta needs AM2R.exe and the patch data; the runner's data folder links to the profile's saves.
             do {
                 let plain = model.addProfile(name: "Plain", version: "1.5.5")
