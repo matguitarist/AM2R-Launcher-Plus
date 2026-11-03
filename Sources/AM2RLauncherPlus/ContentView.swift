@@ -4,6 +4,7 @@ import SwiftUI
 struct ContentView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openSettings) private var openSettings
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         NavigationSplitView {
@@ -18,7 +19,7 @@ struct ContentView: View {
         .task {
             SeedData.insertIfRequested(into: model)
             SelfTest.runIfRequested(model: model)
-            Snapshot.runIfRequested(model: model, openSettings: openSettings)
+            Snapshot.runIfRequested(model: model, openSettings: openSettings, openWindow: openWindow)
             // S-020: at most daily; snapshot and self-test runs stay offline.
             if !SelfTest.requested && (ProcessInfo.processInfo.environment["APP_SNAPSHOT"] ?? "").isEmpty {
                 await model.checkForUpdates()

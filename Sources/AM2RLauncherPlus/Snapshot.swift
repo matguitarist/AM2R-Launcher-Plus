@@ -11,7 +11,7 @@ import SwiftUI
 /// APP_SNAPSHOT_PAGES=all,starred limits the pages. Add "settings" to include Settings.
 /// Add APP_ACCENT=<id> to see the pages in another accent.
 enum Snapshot {
-    static func runIfRequested(model: AppModel, openSettings: OpenSettingsAction) {
+    static func runIfRequested(model: AppModel, openSettings: OpenSettingsAction, openWindow: OpenWindowAction) {
         let env = ProcessInfo.processInfo.environment
         guard let dir = env["APP_SNAPSHOT"], !dir.isEmpty else { return }
         // Snapshots never run against the real database.
@@ -174,6 +174,26 @@ enum Snapshot {
                 }
                 model.lastGameFailure = nil
             }
+            // The Debug Log window: debug-log-launcher and debug-log-game.
+            if let profile = model.currentProfile, only?.contains("debug-log-launcher") ?? true || only?.contains("debug-log-game") ?? true {
+                for (level, source, message) in sampleEvents { log(level, source, message) }
+                let logs = GameRunner.logFolder(for: profile)
+                try? FileManager.default.createDirectory(at: logs, withIntermediateDirectories: true)
+                try? sampleGameLog.write(to: logs.appending(path: "2026-11-03T18-29-40.log"), atomically: true, encoding: .utf8)
+                openWindow(id: "debug-log")
+                try? await Task.sleep(for: .seconds(1))
+                let window = NSApp.windows.first { $0.title == "Debug Log" }
+                for source in DebugLogSource.allCases where only?.contains("debug-log-\(source.rawValue)") ?? true {
+                    model.debugLogSource = source
+                    for mode in ["light", "dark"] {
+                        NSApp.appearance = NSAppearance(named: mode == "light" ? .aqua : .darkAqua)
+                        try? await Task.sleep(for: .seconds(1.5))
+                        capture(to: "\(dir)/debug-log-\(source.rawValue)-\(mode).png", window: window)
+                    }
+                }
+                model.debugLogSource = .launcher
+                window?.close()
+            }
             if only == nil || only?.contains("settings") == true {
                 let main = NSApp.windows.first { $0.canBecomeMain && !$0.isSheet }
                 openSettings()
@@ -194,6 +214,31 @@ enum Snapshot {
             NSApp.terminate(nil)
         }
     }
+
+    private static let sampleEvents: [(DebugLog.Level, String, String)] = [
+        (.info, "Source", "AM2R 1.1 accepted: /Users/player/Downloads/AM2R_11.zip (zip, with AM2R.exe)"),
+        (.info, "Install", "Installing Community Updates from /Users/player/Downloads/AM2R_11.zip"),
+        (.info, "Install", "Patch data 7e5ff84: 92 files, 36,3 MB"),
+        (.info, "Install", "Community Updates 1.5.5 is ready"),
+        (.warning, "Update", "Check failed: Unable to reach GitHub. Check your connection, then try again."),
+        (.info, "Play", "Starting Community Updates 1.5.5 (1.5.5, Native)"),
+        (.error, "Play", "The game ended after 42 s with status 1."),
+        (.info, "Backups", "Backed up Community Updates 1.5.5"),
+    ]
+
+    private static let sampleGameLog = """
+        Loading /Users/player/Library/Application Support/AM2RLauncherPlus/Profiles/game.ios...
+        Loaded "AM2R" (971912648) successfully! [WAD Version 16 / GameMaker version 1.0.0.1763]
+        VM: Initialized with 10122 functions mapped
+        OpenGL Version: 2.1 Metal - 91.7
+        GL: Compiling default vertex shader
+        GL: Shader default succesfully linked!
+        Warning: Runner: Builtin function string_split has the same name as a GML script!
+        Warning: VM: [gml_Object_oControl_Step_0] Stubbed function "os_is_paused"!
+        Warning: VM: [gml_Script_check_keys] Unknown function "gamepad_set_vibration"!
+        Room changed: rm_loading -> titleroom
+        Error: VM: surface_save is not implemented
+        """
 
     private static let sampleLog = """
         Butterscotch \u{2014} GameMaker runner

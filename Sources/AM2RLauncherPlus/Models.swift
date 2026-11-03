@@ -288,6 +288,8 @@ final class AppModel {
     var keptSaves: (name: String, folder: URL)?
     var duplicating = false
     var profileActionError: String?
+    /// Launcher or Game in the Debug Log window.
+    var debugLogSource: DebugLogSource = .launcher
     /// The profile whose Saves Backups sheet is open (S-023), and what it's doing.
     var backupsFor: Profile?
     var backingUp = false
@@ -297,6 +299,7 @@ final class AppModel {
     init(container: ModelContainer) {
         self.container = container
         if source != nil { welcome = .ready }
+        log(.info, "App", "AM2R Launcher Plus \(LauncherUpdater.version) on macOS \(ProcessInfo.processInfo.operatingSystemVersionString). Data folder: \(DataFolder.url.path)")
     }
 
     var source: GameSource? {
@@ -312,12 +315,14 @@ final class AppModel {
         }.value
         switch result {
         case .success(let copy):
+            log(.info, "Source", "AM2R 1.1 accepted: \(copy.url.path) (\(copy.kind.rawValue)\(copy.hasWindowsGame ? ", with AM2R.exe" : ", no AM2R.exe"))")
             let context = container.mainContext
             for old in (try? context.fetch(FetchDescriptor<GameSource>())) ?? [] { context.delete(old) }
             context.insert(GameSource(copy: copy))
             try? context.save()
             welcome = .ready
         case .failure(let problem):
+            log(.warning, "Source", "\(url.path) rejected: \(problem)")
             welcome = .failed(problem, url.lastPathComponent)
         }
     }
@@ -335,15 +340,18 @@ final class AppModel {
         install = state
         let sourceURL = source.url, kind = AM2R11.Kind(rawValue: source.kindRaw) ?? .zip, root = source.root
         let rosetta = source.hasWindowsGame
+        log(.info, "Install", existing.map { "Updating \($0.name)" } ?? "Installing Community Updates from \(sourceURL.path)")
         installTask = Task {
             defer { installTask = nil }
             do {
                 let manifest = try await PatchData.latestManifest(rosetta: rosetta)
+                log(.info, "Install", "Patch data \(manifest.commit.prefix(7)): \(manifest.files.count) files, \(manifest.totalSize.formatted(.byteCount(style: .file)))")
                 install?.bytesTotal = manifest.totalSize
                 let patchFolder = try await PatchData.download(manifest, into: DataFolder.patchData) { done, total in
                     Task { @MainActor in self.install?.bytesDone = done; self.install?.bytesTotal = total }
                 }
                 try Task.checkCancellation()
+                log(.info, "Install", "Patch data ready in \(patchFolder.path)")
                 install?.step = .patch
                 let uuid = existing?.uuid ?? UUID()
                 let destination = DataFolder.profiles.appending(path: uuid.uuidString, directoryHint: .isDirectory)
@@ -368,18 +376,23 @@ final class AppModel {
                 }
                 profile.patchCommit = manifest.commit
                 try? container.mainContext.save()
+                log(.info, "Install", "\(profile.name) is ready in \(profile.folder.path)")
                 selection = profile.id
                 install?.finishedName = profile.name
                 try? await Task.sleep(for: .seconds(1))
                 install = nil
                 sidebar = .play
             } catch is CancellationError {
+                log(.info, "Install", "Cancelled")
                 install = nil
             } catch let failure as PatchData.Failure {
+                log(.error, "Install", "\(failure.message) (\(failure))")
                 install?.failure = failure.message
             } catch let failure as ProfileBuilder.Failure {
+                log(.error, "Install", "\(failure.message) (\(failure))")
                 install?.failure = failure.message
             } catch {
+                log(.error, "Install", "\(error)")
                 install?.failure = "Unable to install: \(error.localizedDescription)"
             }
         }
@@ -417,6 +430,7 @@ final class AppModel {
         let settings = GameSettings.read(from: GameRunner.saveFolder(for: profile))
         // Keeps the layout's keys current, e.g. a profile set up by an earlier build of the Mac layout.
         if settings.controller == .mac { try? settings.write(to: GameRunner.saveFolder(for: profile)) }
+        log(.info, "Play", "Starting \(profile.name) (\(profile.version), \(profile.engine.title)) from \(profile.folder.path)")
         do {
             game = try GameRunner(profile: profile, extraArguments: extraArguments,
                                   gamepadKeys: settings.controller.engineKeys,
@@ -424,11 +438,13 @@ final class AppModel {
                 self?.gameEnded(status: status)
             }
         } catch {
+            log(.error, "Play", error.message)
             playError = error.message
         }
     }
 
     func stopGame() {
+        if game != nil { log(.info, "Play", "Stop") }
         game?.stop()
     }
 
@@ -454,6 +470,9 @@ final class AppModel {
             profile.lastPlayedAt = .now
             try? container.mainContext.save()
         }
+        let seconds = Int(Date.now.timeIntervalSince(game.startedAt))
+        log(status == 0 || game.stoppedByUser ? .info : .error, "Play",
+            "The game ended after \(seconds) s with status \(status)\(game.stoppedByUser ? " (stopped)" : ""). Log: \(game.log.path)")
         if status != 0 && !game.stoppedByUser {
             lastGameFailure = GameFailure(profile: game.profileID, log: game.log, status: status)
         }
@@ -469,12 +488,14 @@ final class AppModel {
         updateCheckMessage = nil
         do {
             let latest = try await UpdateCheck.fetch(rosetta: source?.hasWindowsGame ?? false, known: latestUpdate)
+            log(.info, "Update", "Latest Community Updates: \(latest.version) (\(latest.commit.prefix(7)))")
             latestUpdate = latest
             try? UpdateCheck.write(latest, to: DataFolder.latestUpdate)
             if force, let profile = currentProfile, availableUpdate(for: profile) == nil {
                 updateCheckMessage = "\(profile.name) is up to date."
             }
         } catch {
+            log(.warning, "Update", "Check failed: \(error.message)")
             if force { updateCheckMessage = error.message }
         }
     }
@@ -490,6 +511,7 @@ final class AppModel {
     // MARK: Manage profiles (S-022)
 
     func rename(_ profile: Profile, to name: String) {
+        log(.info, "Profiles", "Renamed \(profile.name) to \(ProfileName.clean(name))")
         profile.name = ProfileName.clean(name)
         try? container.mainContext.save()
     }
@@ -516,9 +538,11 @@ final class AppModel {
         }.value
         switch result {
         case .success(let zip):
+            log(.info, "Backups", "Backed up \(name) to \(zip.path)")
             if label == nil { backupMessage = "Backed up as \(zip.deletingPathExtension().lastPathComponent)." }
             return zip
         case .failure(let failure):
+            log(.error, "Backups", "Back up \(name): \(failure.message)")
             backupError = failure.message
             return nil
         }
@@ -538,10 +562,12 @@ final class AppModel {
         }.value
         switch result {
         case .success:
+            log(.info, "Backups", "Restored \(profile.name) from \(zip.path)")
             backupMessage = "Restored \(zip.deletingPathExtension().lastPathComponent)."
                 + (hasSaves ? " The saves from before are in the list, marked “before restore”." : "")
             return true
         case .failure(let failure):
+            log(.error, "Backups", "Restore \(profile.name) from \(zip.lastPathComponent): \(failure.message)")
             backupError = failure.message
             return false
         }
@@ -584,6 +610,7 @@ final class AppModel {
             }
         }.value
         if let copied {
+            log(.error, "Profiles", "Duplicate \(profile.name): \(copied)")
             profileActionError = "Unable to duplicate \(profile.name): \(copied)"
             return nil
         }
@@ -633,6 +660,7 @@ final class AppModel {
         // The official runner's link to the saves (S-014).
         try? fm.removeItem(at: GameRunner.runnerDataFolder(bundleID: RosettaApp.bundleIdentifier(for: profile.uuid)))
         if lastGameFailure?.profile == profile.uuid { lastGameFailure = nil }
+        log(.info, "Profiles", "Deleted \(profile.name)\(keepSaves ? ", saves kept" : " and its saves")")
         let wasSelected = selection == profile.id
         container.mainContext.delete(profile)
         try? container.mainContext.save()
@@ -643,6 +671,7 @@ final class AppModel {
     func setEngine(_ engine: Engine, for profile: Profile) {
         guard !isPlaying, rosettaBuild == nil, engine != profile.engine else { return }
         engineError = nil
+        log(.info, "Engine", "\(profile.name): \(engine.title)")
         if engine == .native || RosettaApp.app(in: profile.folder) != nil {
             profile.engine = engine
             try? container.mainContext.save()
@@ -674,11 +703,13 @@ final class AppModel {
             }
         }.value
         switch result {
-        case .success:
+        case .success(let app):
+            log(.info, "Engine", "Built the Rosetta app \(app.path)")
             profile.engine = .rosetta
             try? container.mainContext.save()
             return true
         case .failure(let failure):
+            log(.error, "Engine", "Rosetta app for \(profile.name): \(failure.message) (\(failure))")
             engineError = EngineError(profile: profile.uuid, message: failure.message)
             return false
         }
@@ -704,6 +735,7 @@ final class AppModel {
         installingRosetta = false
         rosettaInstalled = Rosetta.isInstalled
         // -128: the person cancelled the password prompt.
+        log(rosettaInstalled ? .info : .warning, "Engine", "Install Rosetta: \(rosettaInstalled ? "installed" : output.trimmingCharacters(in: .whitespacesAndNewlines))")
         if !rosettaInstalled && !output.contains("-128") {
             rosettaInstallError = "Unable to install Rosetta. Check your connection, then try again."
         }
@@ -724,9 +756,11 @@ final class AppModel {
         }.value
         switch result {
         case .success(let moved):
+            log(.info, "Data", "Moved the data folder to \(moved.path)")
             DataFolder.setLocation(moved)
             hashCache = HashCache(file: DataFolder.hashCache)
         case .failure(let failure):
+            log(.error, "Data", "Move failed: \(failure.message)")
             dataMoveError = failure.message
         }
         dataMove = nil

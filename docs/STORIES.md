@@ -5,7 +5,7 @@ pages that show each story. Thimble tasks are named in `Thimble:` and their note
 `Story: S-xxx`.
 
 Snapshot pages: `welcome`, `welcome-checking`, `welcome-error`, `install-progress`, `play`,
-`play-running`, `play-no-rosetta`, `play-failed`, `log-sheet`, `profiles`, `profiles-delete`, `settings-game`, `settings-controls`,
+`play-running`, `play-no-rosetta`, `play-failed`, `log-sheet`, `profiles`, `profiles-delete`, `saves-backups`, `debug-log-launcher`, `debug-log-game`, `settings-game`, `settings-controls`,
 `settings-general`, `update-banner`.
 
 ## M1 Install and play (0.1.0)

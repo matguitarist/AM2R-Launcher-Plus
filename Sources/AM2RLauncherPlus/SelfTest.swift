@@ -311,6 +311,13 @@ enum SelfTest {
                 }
             }
 
+            // Debug Log: launcher events are kept and written to launcher.log.
+            check("the launcher log records events", LauncherLog.shared.entries.contains { $0.source == "Profiles" && $0.message.hasPrefix("Deleted") })
+            LauncherLog.shared.flush()
+            try? await Task.sleep(for: .seconds(0.5))
+            check("the launcher log is written to launcher.log",
+                  (try? String(contentsOf: LauncherLog.file, encoding: .utf8))?.contains("INFO [App] AM2R Launcher Plus") == true, LauncherLog.file.path)
+
             print(failures == 0 ? "SELFTEST PASS \(count) checks" : "SELFTEST FAIL \(failures) of \(count) checks")
             finish(code: failures == 0 ? 0 : 1)
         }

@@ -102,8 +102,17 @@ struct AM2RLauncherPlusApp: App {
                 Button("Show Log") { model.showLog() }
                     .keyboardShortcut("l")
                     .disabled(model.currentLog == nil)
+                DebugLogMenuItem()
             }
         }
+
+        Window("Debug Log", id: "debug-log") {
+            DebugLogWindow()
+                .environment(model)
+                .themed()
+        }
+        .modelContainer(model.container)
+        .defaultSize(width: 960, height: 560)
 
         Settings {
             SettingsView()
