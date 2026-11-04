@@ -12,7 +12,7 @@ index 9643079..21097ee 100644
          if(NOT ENABLE_NOOP_RENDERER)
              message(FATAL_ERROR "BACKEND=noop requires ENABLE_NOOP_RENDERER=ON")
 diff --git a/src/backends/appkit.m b/src/backends/appkit.m
-index 9623eb1..04806c1 100644
+index 9623eb1..dfd06f8 100644
 --- a/src/backends/appkit.m
 +++ b/src/backends/appkit.m
 @@ -4,7 +4,12 @@
@@ -125,79 +125,115 @@ index 9623eb1..04806c1 100644
      if (@available(macOS 10.15, *)) {
          [GCController stopWirelessControllerDiscovery];
      }
-@@ -772,19 +846,285 @@ static bool windowIsFocused(void) {
+@@ -772,19 +846,322 @@ static bool windowIsFocused(void) {
      return [window isKeyWindow];
  }
  
 +// ===[ Rumble ]===
 +// gamepad_set_vibration through Core Haptics: one engine per motor (left and right handle), each playing a
-+// looping continuous event whose intensity follows the game. Controllers without handle motors get one
++// long continuous event whose intensity follows the game. Controllers without handle motors get one
 +// engine on the whole controller at the stronger of the two values.
++// Plain pattern players only: gamecontrollerd drops the connection when a controller's engine is asked
++// for an advanced (looping) player ("Couldn't communicate with a helper application", seen on a DualShock 4).
++// A failed or stopped engine (the controller dropped, the daemon restarted) is tried again a few seconds later.
++#define RUMBLE_EVENT_SECONDS 30.0
++#define RUMBLE_RETRY_SECONDS 3.0
++
 +@interface RumbleMotor : NSObject
 +@property (nonatomic, retain) CHHapticEngine *engine;
-+@property (nonatomic, retain) id<CHHapticAdvancedPatternPlayer> player;
++@property (nonatomic, retain) CHHapticPattern *pattern;
++@property (nonatomic, retain) id<CHHapticPatternPlayer> player;
 +@property (nonatomic) float level;
-+@property (nonatomic) BOOL playing;
++@property (nonatomic) double startedAt;
++@property (atomic) BOOL stopped;
 +@end
 +@implementation RumbleMotor
 +- (void)dealloc {
++    _engine.stoppedHandler = ^(CHHapticEngineStoppedReason reason) { (void) reason; };
++    _engine.resetHandler = ^{};
 +    [_player stopAtTime:CHHapticTimeImmediate error:nil];
 +    [_engine stopWithCompletionHandler:nil];
 +    [_player release];
++    [_pattern release];
 +    [_engine release];
 +    [super dealloc];
 +}
 +@end
 +
 +static NSMutableDictionary<NSString *, RumbleMotor *> *rumbleMotors = nil;
++static NSMutableDictionary<NSString *, NSNumber *> *rumbleFailedAt = nil;
++
++static double rumbleNow(void) {
++    return (double) nowNanos() / 1e9;
++}
 +
 +static RumbleMotor *rumbleMotor(GCController *controller, GCHapticsLocality locality) API_AVAILABLE(macos(11.0)) {
 +    if (rumbleMotors == nil) rumbleMotors = [[NSMutableDictionary alloc] init];
++    if (rumbleFailedAt == nil) rumbleFailedAt = [[NSMutableDictionary alloc] init];
++    GCDeviceHaptics *haptics = controller.haptics;
++    if (![haptics.supportedLocalities containsObject:locality]) return nil;
 +    NSString *key = [NSString stringWithFormat:@"%p/%@", controller, locality];
 +    RumbleMotor *motor = rumbleMotors[key];
-+    if (motor != nil) return [motor isKindOfClass:[NSNull class]] ? nil : motor;
-+    GCDeviceHaptics *haptics = controller.haptics;
-+    CHHapticEngine *engine = [haptics.supportedLocalities containsObject:locality] ? [haptics createEngineWithLocality:locality] : nil;
-+    NSError *error = nil;
-+    if (engine == nil && [haptics.supportedLocalities containsObject:locality]) {
-+        logWarn("Rumble: %s could not create a haptic engine for %s\n", controller.vendorName.UTF8String ?: "controller", locality.UTF8String);
++    if (motor != nil && !motor.stopped) return motor;
++    if (motor != nil) {
++        [rumbleMotors removeObjectForKey:key];
++        rumbleFailedAt[key] = @(rumbleNow());
 +    }
++    NSNumber *failedAt = rumbleFailedAt[key];
++    if (failedAt != nil && rumbleNow() - failedAt.doubleValue < RUMBLE_RETRY_SECONDS) return nil;
++
++    NSError *error = nil;
++    CHHapticEngine *engine = [haptics createEngineWithLocality:locality];
 +    CHHapticEvent *event = [[[CHHapticEvent alloc] initWithEventType:CHHapticEventTypeHapticContinuous
 +        parameters:@[[[[CHHapticEventParameter alloc] initWithParameterID:CHHapticEventParameterIDHapticIntensity value:1.0f] autorelease],
 +                     [[[CHHapticEventParameter alloc] initWithParameterID:CHHapticEventParameterIDHapticSharpness value:0.2f] autorelease]]
-+        relativeTime:0 duration:1.0] autorelease];
++        relativeTime:0 duration:RUMBLE_EVENT_SECONDS] autorelease];
 +    CHHapticPattern *pattern = engine ? [[[CHHapticPattern alloc] initWithEvents:@[event] parameters:@[] error:&error] autorelease] : nil;
-+    id<CHHapticAdvancedPatternPlayer> player = pattern && [engine startAndReturnError:&error] ? [engine createAdvancedPlayerWithPattern:pattern error:&error] : nil;
-+    if (player == nil) {
-+        if (engine != nil) {
++    if (pattern == nil || ![engine startAndReturnError:&error]) {
++        if (failedAt == nil) {
 +            logWarn("Rumble: %s %s failed: %s\n", controller.vendorName.UTF8String ?: "controller", locality.UTF8String,
-+                    error.localizedDescription.UTF8String ?: "unknown error");
++                    engine == nil ? "no haptic engine" : error.localizedDescription.UTF8String ?: "unknown error");
 +        }
-+        rumbleMotors[key] = (RumbleMotor *)[NSNull null];
++        rumbleFailedAt[key] = @(rumbleNow());
 +        return nil;
 +    }
-+    player.loopEnabled = YES;
++    [rumbleFailedAt removeObjectForKey:key];
 +    motor = [[[RumbleMotor alloc] init] autorelease];
 +    motor.engine = engine;
-+    motor.player = player;
-+    engine.resetHandler = ^{ motor.playing = NO; [motor.engine startAndReturnError:nil]; };
++    motor.pattern = pattern;
++    __block RumbleMotor *owner = motor; // not retained: the engine belongs to the motor
++    engine.stoppedHandler = ^(CHHapticEngineStoppedReason reason) { (void) reason; owner.stopped = YES; };
++    engine.resetHandler = ^{ owner.stopped = YES; };
 +    rumbleMotors[key] = motor;
 +    return motor;
 +}
 +
 +static void rumbleSet(RumbleMotor *motor, float level) {
-+    if (motor == nil || fabsf(level - motor.level) < 0.01f) return;
-+    motor.level = level;
++    if (motor == nil) return;
++    bool running = motor.player != nil && rumbleNow() - motor.startedAt < RUMBLE_EVENT_SECONDS - 1.0;
 +    if (level <= 0.0f) {
-+        if (motor.playing) [motor.player stopAtTime:CHHapticTimeImmediate error:nil];
-+        motor.playing = NO;
++        if (motor.player != nil) [motor.player stopAtTime:CHHapticTimeImmediate error:nil];
++        motor.player = nil;
++        motor.level = 0.0f;
 +        return;
 +    }
-+    CHHapticDynamicParameter *intensity = [[[CHHapticDynamicParameter alloc]
-+        initWithParameterID:CHHapticDynamicParameterIDHapticIntensityControl value:level relativeTime:0] autorelease];
-+    if (!motor.playing) {
-+        motor.playing = [motor.player startAtTime:CHHapticTimeImmediate error:nil];
++    if (running && fabsf(level - motor.level) < 0.01f) return;
++    motor.level = level;
++    if (!running) {
++        // A fresh player each time: a pattern player plays once, and the event lasts RUMBLE_EVENT_SECONDS.
++        if (motor.player != nil) [motor.player stopAtTime:CHHapticTimeImmediate error:nil];
++        NSError *error = nil;
++        motor.player = [motor.engine createPlayerWithPattern:motor.pattern error:&error];
++        if (motor.player == nil || ![motor.player startAtTime:CHHapticTimeImmediate error:&error]) {
++            motor.player = nil;
++            motor.stopped = YES;
++            return;
++        }
++        motor.startedAt = rumbleNow();
 +    }
++    // The game asks for motor strength; Core Haptics intensity is perceptual and drives the motor at its square.
++    CHHapticDynamicParameter *intensity = [[[CHHapticDynamicParameter alloc]
++        initWithParameterID:CHHapticDynamicParameterIDHapticIntensityControl value:sqrtf(level) relativeTime:0] autorelease];
 +    [motor.player sendParameters:@[intensity] atTime:CHHapticTimeImmediate error:nil];
 +}
 +
@@ -228,11 +264,10 @@ index 9623eb1..04806c1 100644
 +                    controller.haptics == nil ? "no haptics on macOS" : [localities componentsJoinedByString:@", "].UTF8String);
 +        }
 +        if (controller.haptics == nil) return;
-+        RumbleMotor *leftMotor = rumbleMotor(controller, GCHapticsLocalityLeftHandle);
-+        RumbleMotor *rightMotor = rumbleMotor(controller, GCHapticsLocalityRightHandle);
-+        if (leftMotor != nil || rightMotor != nil) {
-+            rumbleSet(leftMotor, left);
-+            rumbleSet(rightMotor, right);
++        NSSet<GCHapticsLocality> *localities = controller.haptics.supportedLocalities;
++        if ([localities containsObject:GCHapticsLocalityLeftHandle] && [localities containsObject:GCHapticsLocalityRightHandle]) {
++            rumbleSet(rumbleMotor(controller, GCHapticsLocalityLeftHandle), left);
++            rumbleSet(rumbleMotor(controller, GCHapticsLocalityRightHandle), right);
 +        } else {
 +            rumbleSet(rumbleMotor(controller, GCHapticsLocalityDefault), fmaxf(left, right));
 +        }
@@ -242,6 +277,8 @@ index 9623eb1..04806c1 100644
 +static void rumbleStopAll(void) {
 +    [rumbleMotors release];
 +    rumbleMotors = nil;
++    [rumbleFailedAt release];
++    rumbleFailedAt = nil;
 +}
 +
  void platformInitFunctions(Runner *runner) {
@@ -411,7 +448,7 @@ index 9623eb1..04806c1 100644
      [glContext flushBuffer];
  }
  
-@@ -828,6 +1168,7 @@ bool platformHandleEvents(void)
+@@ -828,6 +1205,7 @@ bool platformHandleEvents(void)
                      g_runner->gamepads->connectedCount++;
                  }
              }
