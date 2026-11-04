@@ -608,7 +608,7 @@ index f82a351..985edbe 100644
      glVtable.gpuGetBlendMode = glGpuGetBlendMode;
      glVtable.gpuSetBlendMode = glGpuSetBlendMode;
 diff --git a/src/loop.c b/src/loop.c
-index 42ef176..8e3d736 100644
+index 42ef176..ba7d9c3 100644
 --- a/src/loop.c
 +++ b/src/loop.c
 @@ -1372,7 +1372,16 @@ int loop(CommandLineArgs args, const char *argv0) {
@@ -629,6 +629,21 @@ index 42ef176..8e3d736 100644
  
                  if (showDebugOverlay && renderer->vtable->drawTextUI != nullptr) {
                      renderer->vtable->beginGUI(renderer, fbWidth, fbHeight, 0, 0, fbWidth, fbHeight, RENDER_TARGET_HOST_FRAMEBUFFER);
+@@ -1468,8 +1477,13 @@ int loop(CommandLineArgs args, const char *argv0) {
+ 
+             // Only present a new frame when we actually rendered one. This includes the first paused frame so the
+             // pause overlay can be presented once, and all later paused frames stay frozen without re-swapping.
+-            if (runner->pendingRoom == -1 && shouldRender)
++            if (runner->pendingRoom == -1 && shouldRender) {
++                uint64_t swapStartTime = nowNanos();
+                 platformSwapBuffers();
++                if (shouldStep && args.traceFrames) {
++                    logInfo("Frame %d (Present, %.2f ms)\n", runner->frameCount, (int64_t)(nowNanos() - swapStartTime) / 1000000.0);
++                }
++            }
+             if (shouldStep) {
+                 Runner_handlePendingRoomChange(runner);
+             }
 diff --git a/src/renderer.h b/src/renderer.h
 index ae09f7d..284489e 100644
 --- a/src/renderer.h

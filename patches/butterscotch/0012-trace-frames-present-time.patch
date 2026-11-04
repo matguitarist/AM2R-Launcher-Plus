@@ -1,0 +1,17 @@
+--- a/src/loop.c
++++ b/src/loop.c
+@@ -1477,8 +1477,13 @@
+ 
+             // Only present a new frame when we actually rendered one. This includes the first paused frame so the
+             // pause overlay can be presented once, and all later paused frames stay frozen without re-swapping.
+-            if (runner->pendingRoom == -1 && shouldRender)
++            if (runner->pendingRoom == -1 && shouldRender) {
++                uint64_t swapStartTime = nowNanos();
+                 platformSwapBuffers();
++                if (shouldStep && args.traceFrames) {
++                    logInfo("Frame %d (Present, %.2f ms)\n", runner->frameCount, (int64_t)(nowNanos() - swapStartTime) / 1000000.0);
++                }
++            }
+             if (shouldStep) {
+                 Runner_handlePendingRoomChange(runner);
+             }
