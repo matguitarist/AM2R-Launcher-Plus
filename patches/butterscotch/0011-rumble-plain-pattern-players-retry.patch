@@ -1,6 +1,6 @@
 --- a/src/backends/appkit.m
 +++ b/src/backends/appkit.m
-@@ -848,73 +848,109 @@
+@@ -848,73 +848,112 @@
  
  // ===[ Rumble ]===
  // gamepad_set_vibration through Core Haptics: one engine per motor (left and right handle), each playing a
@@ -12,6 +12,8 @@
 +// A failed or stopped engine (the controller dropped, the daemon restarted) is tried again a few seconds later.
 +#define RUMBLE_EVENT_SECONDS 30.0
 +#define RUMBLE_RETRY_SECONDS 3.0
++// Controller motors feel softer than the pads GameMaker games were tuned on: run them 1.5 times stronger.
++#define RUMBLE_GAIN 1.5f
 +
  @interface RumbleMotor : NSObject
  @property (nonatomic, retain) CHHapticEngine *engine;
@@ -131,12 +133,13 @@
 +        motor.startedAt = rumbleNow();
      }
 +    // The game asks for motor strength; Core Haptics intensity is perceptual and drives the motor at its square.
++    float strength = fminf(1.0f, level * RUMBLE_GAIN);
 +    CHHapticDynamicParameter *intensity = [[[CHHapticDynamicParameter alloc]
-+        initWithParameterID:CHHapticDynamicParameterIDHapticIntensityControl value:sqrtf(level) relativeTime:0] autorelease];
++        initWithParameterID:CHHapticDynamicParameterIDHapticIntensityControl value:sqrtf(strength) relativeTime:0] autorelease];
      [motor.player sendParameters:@[intensity] atTime:CHHapticTimeImmediate error:nil];
  }
  
-@@ -945,11 +981,10 @@
+@@ -945,11 +984,10 @@
                      controller.haptics == nil ? "no haptics on macOS" : [localities componentsJoinedByString:@", "].UTF8String);
          }
          if (controller.haptics == nil) return;
@@ -152,7 +155,7 @@
          } else {
              rumbleSet(rumbleMotor(controller, GCHapticsLocalityDefault), fmaxf(left, right));
          }
-@@ -959,6 +994,8 @@
+@@ -959,6 +997,8 @@
  static void rumbleStopAll(void) {
      [rumbleMotors release];
      rumbleMotors = nil;

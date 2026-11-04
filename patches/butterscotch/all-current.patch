@@ -12,7 +12,7 @@ index 9643079..21097ee 100644
          if(NOT ENABLE_NOOP_RENDERER)
              message(FATAL_ERROR "BACKEND=noop requires ENABLE_NOOP_RENDERER=ON")
 diff --git a/src/backends/appkit.m b/src/backends/appkit.m
-index 9623eb1..dfd06f8 100644
+index 9623eb1..7ac60c9 100644
 --- a/src/backends/appkit.m
 +++ b/src/backends/appkit.m
 @@ -4,7 +4,12 @@
@@ -125,7 +125,7 @@ index 9623eb1..dfd06f8 100644
      if (@available(macOS 10.15, *)) {
          [GCController stopWirelessControllerDiscovery];
      }
-@@ -772,19 +846,322 @@ static bool windowIsFocused(void) {
+@@ -772,19 +846,325 @@ static bool windowIsFocused(void) {
      return [window isKeyWindow];
  }
  
@@ -138,6 +138,8 @@ index 9623eb1..dfd06f8 100644
 +// A failed or stopped engine (the controller dropped, the daemon restarted) is tried again a few seconds later.
 +#define RUMBLE_EVENT_SECONDS 30.0
 +#define RUMBLE_RETRY_SECONDS 3.0
++// Controller motors feel softer than the pads GameMaker games were tuned on: run them 1.5 times stronger.
++#define RUMBLE_GAIN 1.5f
 +
 +@interface RumbleMotor : NSObject
 +@property (nonatomic, retain) CHHapticEngine *engine;
@@ -232,8 +234,9 @@ index 9623eb1..dfd06f8 100644
 +        motor.startedAt = rumbleNow();
 +    }
 +    // The game asks for motor strength; Core Haptics intensity is perceptual and drives the motor at its square.
++    float strength = fminf(1.0f, level * RUMBLE_GAIN);
 +    CHHapticDynamicParameter *intensity = [[[CHHapticDynamicParameter alloc]
-+        initWithParameterID:CHHapticDynamicParameterIDHapticIntensityControl value:sqrtf(level) relativeTime:0] autorelease];
++        initWithParameterID:CHHapticDynamicParameterIDHapticIntensityControl value:sqrtf(strength) relativeTime:0] autorelease];
 +    [motor.player sendParameters:@[intensity] atTime:CHHapticTimeImmediate error:nil];
 +}
 +
@@ -448,7 +451,7 @@ index 9623eb1..dfd06f8 100644
      [glContext flushBuffer];
  }
  
-@@ -828,6 +1205,7 @@ bool platformHandleEvents(void)
+@@ -828,6 +1208,7 @@ bool platformHandleEvents(void)
                      g_runner->gamepads->connectedCount++;
                  }
              }
