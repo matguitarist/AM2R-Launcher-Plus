@@ -1,28 +1,36 @@
 import AM2RLauncherPlusKit
 import Foundation
+import LogKitUI
 import os
 
-/// What the launcher did, for the Debug Log window: kept in memory (the last 5000 entries),
+/// What the launcher did, for the Log page: kept in memory (the last 5000 entries) in a LogKit store,
 /// written to <data folder>/Logs/launcher.log, and sent to the system log (Console, subsystem
 /// com.mathieu.am2rlauncherplus).
-@Observable
 final class LauncherLog {
     static let shared = LauncherLog()
     static let limit = 5000
 
-    private(set) var entries: [DebugLog.Entry] = []
-    @ObservationIgnored private var nextID = 1
-    @ObservationIgnored private var pending: [String] = []
-    @ObservationIgnored private var flushScheduled = false
-    @ObservationIgnored private let system = Logger(subsystem: "com.mathieu.am2rlauncherplus", category: "launcher")
+    /// Memory only: launcher.log keeps its own format and rotation, written below.
+    let store = LogStore(fileURL: nil, limit: LauncherLog.limit)
+    /// The Log page's Launcher view, kept here so filters and Clear survive leaving the page.
+    let viewer: LogViewerModel
+
+    private var pending: [String] = []
+    private var flushScheduled = false
+    private let system = Logger(subsystem: "com.mathieu.am2rlauncherplus", category: "launcher")
 
     static var file: URL { DataFolder.url.appending(path: "Logs/launcher.log") }
 
+    init() {
+        viewer = LogViewerModel(store: store)
+        viewer.filter.levels = DebugLogSource.startLevels
+        viewer.defaultFilter = viewer.filter
+    }
+
+    var entries: [LogEntry] { store.entries }
+
     func add(_ level: DebugLog.Level, _ source: String, _ message: String) {
-        let entry = DebugLog.Entry(id: nextID, date: .now, level: level, source: source, message: message)
-        nextID += 1
-        entries.append(entry)
-        if entries.count > Self.limit { entries.removeFirst(entries.count - Self.limit) }
+        store.post(level.logLevel, message, source: source)
         switch level {
         case .debug: system.debug("[\(source, privacy: .public)] \(message, privacy: .public)")
         case .info: system.info("[\(source, privacy: .public)] \(message, privacy: .public)")
@@ -30,7 +38,7 @@ final class LauncherLog {
         case .error: system.error("[\(source, privacy: .public)] \(message, privacy: .public)")
         }
         // Batched: many lines at once (a download) become one write.
-        pending.append(DebugLog.line(entry))
+        pending.append(DebugLog.line(date: .now, level: level, source: source, message: message))
         guard !flushScheduled else { return }
         flushScheduled = true
         Task {

@@ -1,20 +1,12 @@
 import Foundation
+import LogKit
 
-/// Lines of the Debug Log window: the launcher's own events, and the game's output read back from its log.
+/// The Log page's two logs: the launcher's own events (launcher.log), and the game's output read back from its log.
 public enum DebugLog {
     public enum Level: Int, CaseIterable, Comparable, Sendable, Codable {
         case debug, info, warning, error
 
         public static func < (a: Level, b: Level) -> Bool { a.rawValue < b.rawValue }
-
-        public var title: String {
-            switch self {
-            case .debug: "Debug"
-            case .info: "Info"
-            case .warning: "Warning"
-            case .error: "Error"
-            }
-        }
 
         /// The word in launcher.log.
         var tag: String {
@@ -25,33 +17,24 @@ public enum DebugLog {
             case .error: "ERROR"
             }
         }
-    }
 
-    public struct Entry: Identifiable, Equatable, Sendable {
-        public var id: Int
-        /// Nil for game lines: the game doesn't write times.
-        public var date: Date?
-        public var level: Level
-        /// What wrote it: "Install", "Play", "Update" for the launcher; "VM", "GL", "Runner" for the game.
-        public var source: String
-        public var message: String
-
-        public init(id: Int, date: Date?, level: Level, source: String, message: String) {
-            self.id = id
-            self.date = date
-            self.level = level
-            self.source = source
-            self.message = message
+        /// The level in the viewer.
+        public var logLevel: LogLevel {
+            switch self {
+            case .debug: .debug
+            case .info: .info
+            case .warning: .warning
+            case .error: .error
+            }
         }
     }
 
     // MARK: launcher.log
 
     /// "2026-11-03T14:05:00Z INFO [Install] Downloaded patch data 7e5ff84"
-    public static func line(_ entry: Entry) -> String {
-        let date = (entry.date ?? .now).formatted(.iso8601)
-        let message = entry.message.replacingOccurrences(of: "\n", with: "\n    ")
-        return "\(date) \(entry.level.tag) [\(entry.source)] \(message)"
+    public static func line(date: Date, level: Level, source: String, message: String) -> String {
+        let message = message.replacingOccurrences(of: "\n", with: "\n    ")
+        return "\(date.formatted(.iso8601)) \(level.tag) [\(source)] \(message)"
     }
 
     /// Appends lines to `file`; past `maxBytes` the file moves to <name>.1.log first, so two files at most.
@@ -73,13 +56,18 @@ public enum DebugLog {
 
     // MARK: Game log
 
+    /// The game log for the viewer: one entry per line, without times (the game doesn't write them).
+    public static let gameParser = LineLogParser(parseLine: gameLine)
+
     /// Reads one line of the engine's output: "Warning: VM: [gml_…] Unknown function …" is a warning from VM,
     /// "GL: Compiling default vertex shader" is info from GL, a line without a tag comes from "Game".
-    public static func gameEntry(_ line: String, id: Int) -> Entry {
-        var text = Substring(line)
-        var level = Level.info
-        for (prefix, found) in [("Warning: ", Level.warning), ("WARNING: ", .warning), ("Error: ", .error), ("ERROR: ", .error),
-                                ("Fatal: ", .error), ("FATAL: ", .error)] where text.hasPrefix(prefix) {
+    /// Nil for an empty line.
+    @Sendable public static func gameLine(_ line: Substring) -> ParsedLine? {
+        guard !line.isEmpty else { return nil }
+        var text = line
+        var level = LogLevel.info
+        for (prefix, found) in [("Warning: ", LogLevel.warning), ("WARNING: ", .warning), ("Error: ", .error), ("ERROR: ", .error),
+                                ("Fatal: ", .critical), ("FATAL: ", .critical)] where text.hasPrefix(prefix) {
             level = found
             text = text.dropFirst(prefix.count)
             break
@@ -98,20 +86,6 @@ public enum DebugLog {
                 level = .error
             }
         }
-        return Entry(id: id, date: nil, level: level, source: source, message: String(text))
-    }
-
-    /// Every line of a game log as entries, numbered from 1.
-    public static func gameEntries(_ text: String) -> [Entry] {
-        text.split(separator: "\n", omittingEmptySubsequences: true).enumerated().map { gameEntry(String($1), id: $0 + 1) }
-    }
-
-    /// Entries with one of `levels`, whose message or source contains `query` (any case).
-    public static func filter(_ entries: [Entry], levels: Set<Level>, query: String) -> [Entry] {
-        let query = query.trimmingCharacters(in: .whitespaces)
-        return entries.filter { entry in
-            levels.contains(entry.level)
-                && (query.isEmpty || entry.message.localizedCaseInsensitiveContains(query) || entry.source.localizedCaseInsensitiveContains(query))
-        }
+        return ParsedLine(level: level, source: source, message: String(text))
     }
 }

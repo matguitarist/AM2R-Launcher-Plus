@@ -1,12 +1,13 @@
 import AM2RLauncherPlusKit
 import AppKit
+import LogKit
 import SwiftUI
 
 /// The game log of one run, in monospace (S-006).
 struct LogSheet: View {
     @Environment(\.dismiss) private var dismiss
     let item: LogSheetItem
-    @State private var tail = LogTail.Result(text: "", truncated: false)
+    @State private var tail: (text: String, truncated: Bool) = ("", false)
 
     var body: some View {
         VStack(spacing: 0) {
@@ -60,8 +61,20 @@ struct LogSheet: View {
             .padding(Space.lg)
         }
         .onExitCommand { dismiss() }
-        .task(id: item.log) { tail = LogTail.read(item.log) }
+        .task(id: item.log) { tail = Self.read(item.log) }
         .noInitialFocus()
+    }
+
+    /// The end of the log: its last 2 MB, and of those the last 5000 lines.
+    nonisolated static func read(_ file: URL, maxLines: Int = 5000) -> (text: String, truncated: Bool) {
+        guard var (text, truncated) = try? LogFiles.readTail(of: file, maxBytes: 2 << 20) else { return ("", false) }
+        if text.hasSuffix("\n") { text.removeLast() }
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+        if lines.count > maxLines {
+            text = lines.suffix(maxLines).joined(separator: "\n")
+            truncated = true
+        }
+        return (text, truncated)
     }
 
     /// Copy takes the whole file, not only the lines on screen.

@@ -3,6 +3,7 @@ import Foundation
 import GameController
 import SwiftData
 import AM2RLauncherPlusKit
+import LogKit
 
 /// What runs the game. See docs/GLOSSARY.md: "Native" and "Rosetta".
 enum Engine: String, Codable, CaseIterable, Identifiable {
@@ -702,7 +703,7 @@ final class AppModel {
     var currentLog: URL? {
         guard let profile = currentProfile else { return nil }
         if let failure = lastGameFailure, failure.profile == profile.uuid { return failure.log }
-        return LogTail.newest(in: GameRunner.logFolder(for: profile))
+        return LogFiles.sessions(in: GameRunner.logFolder(for: profile), extensions: ["log"]).first
     }
 
     /// Game > Show Log (⌘L) and the failure banner's Show Log.
