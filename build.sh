@@ -40,6 +40,8 @@ mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$bin" "$app/Contents/MacOS/$name"
 # Version from VERSION (tools/release.sh sets it); the build number is the date, so it always grows (Sparkle compares it).
 sed -e "s/__BUILD__/$(date +%Y%m%d%H%M)/" -e "s/__VERSION__/$(cat "$here/VERSION")/" "$here/Info.plist.in" > "$app/Contents/Info.plist"
+# Package resources (LogKit's viewer strings): Bundle.module finds them in Contents/Resources.
+for bundle in "$scratch/$config"/*.bundle(N); do cp -R "$bundle" "$app/Contents/Resources/"; done
 # Sparkle (launcher updates, S-032), next to the executable's @executable_path/../Frameworks rpath.
 mkdir -p "$app/Contents/Frameworks"
 cp -R "$scratch/$config/Sparkle.framework" "$app/Contents/Frameworks/"
