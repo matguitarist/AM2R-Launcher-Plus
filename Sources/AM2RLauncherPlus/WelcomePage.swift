@@ -55,10 +55,10 @@ struct WelcomePage: View {
             .cardBackground(highlighted: dropTargeted)
             .gridArea("drop-zone", inset: Space.xxl)
             .overlay {
-                RoundedRectangle(cornerRadius: Radius.card)
+                RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
                     .strokeBorder(dropTargeted ? Palette.accent : Color.secondary.opacity(0.4), style: StrokeStyle(lineWidth: 2, dash: [8, 4]))
             }
-            .contentShape(.rect(cornerRadius: Radius.card))
+            .contentShape(.rect(cornerRadius: Radius.card, style: .continuous))
         }
         .buttonStyle(.plain)
         .disabled(isChecking)
