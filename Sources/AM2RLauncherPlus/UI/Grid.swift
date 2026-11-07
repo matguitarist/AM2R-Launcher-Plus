@@ -25,7 +25,7 @@ enum Radius {
 extension View {
     /// The quiet fill behind a card or banner on a page.
     func cardBackground(_ radius: CGFloat = Radius.card, highlighted: Bool = false) -> some View {
-        background(.quaternary.opacity(highlighted ? 0.6 : 0.25), in: .rect(cornerRadius: radius))
+        background(.quaternary.opacity(highlighted ? 0.6 : 0.25), in: .rect(cornerRadius: radius, style: .continuous))
     }
 
     /// Marks an area (a page, a card, a sheet). Probes inside it must sit on
