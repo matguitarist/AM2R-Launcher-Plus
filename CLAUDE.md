@@ -9,7 +9,7 @@ SwiftData database and no server.
 - `Sources/AM2RLauncherPlusKit/` rules and data logic with no SwiftUI. Tests in `Tests/AM2RLauncherPlusKitTests/`.
 - `Package.swift` a Swift package. There is no Xcode project.
 - `build.sh` builds, signs, and installs `~/Applications/AM2RLauncherPlus.app`, with Sparkle.framework embedded.
-- `tools/release.sh <version>` makes a Developer ID, notarized DMG and a signed Sparkle appcast, and publishes both as a GitHub release (`--local` builds without publishing). The version lives in `VERSION`.
+- `tools/release.sh <version>` makes a Developer ID, notarized DMG, the Sparkle zip and a signed appcast, and publishes them as a GitHub release (`--local` builds without publishing, `--check` only checks). The script is the same in every app; what's specific to this one is in `release.conf`. Notes come from `release-notes/<version>.md`, or are drafted from the commits since the last tag. The version lives in `VERSION`.
 - `Icon/AppIcon.icon` the app icon, an Icon Composer file (JSON plus SVG layers). `build.sh` compiles it with `tools/make_icon.sh`; `tools/icon_review.sh` renders every look into one PNG.
 - `docs/` the brief, the screen index, and the user stories, when they exist.
 
