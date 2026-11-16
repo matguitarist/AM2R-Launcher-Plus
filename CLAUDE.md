@@ -6,6 +6,9 @@ SwiftData database and no server.
 Shared rules for my Mac apps (build and check, design rules, skills, git):
 @~/.claude/mac-app-conventions.md
 
+Shared rules for how every project is laid out and named:
+@~/.claude/project-layout.md
+
 ## Layout
 
 - `Sources/AM2RLauncherPlus/` the app. `App.swift` has the window, menus, and the database location.
