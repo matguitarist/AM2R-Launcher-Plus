@@ -147,3 +147,68 @@ func installsARealMod() throws {
     print("REALMOD built on Community Updates: \(ModPackage.isBuiltOnCommunityUpdates(game: result.folder.appending(path: "game.ios")))")
     print("REALMOD \(package.name) \(package.version) by \(package.author), \(package.profile.operatingSystem), \(package.gamePatch) -> \(result.folder.path)")
 }
+
+// MARK: Zips as Atomic makes them (github.com/AM2R-Community-Developers/Atomic, AtomicLib/Core.cs)
+
+/// profile.xml as .NET's XmlSerializer writes it for Atomic: a byte order mark, the xsi and xsd
+/// namespaces on the root, attributes in ModProfileXML order, lowercase booleans.
+private func atomicProfile(os: String = "Mac", name: String = "Atomic Mod", yyc: Bool = false,
+                           android: Bool = false, installable: Bool = true, declaredEncoding: String = "utf-8") -> String {
+    "\u{FEFF}<?xml version=\"1.0\" encoding=\"\(declaredEncoding)\"?>\r\n"
+        + #"<message xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" "#
+        + #"OperatingSystem="\#(os)" XMLVersion="1" Version="2.0" Name="\#(name)" Author="Jo" UsesCustomMusic="true" "#
+        + #"SaveLocation="%localappdata%/AM2R/atomicmod" SupportsAndroid="\#(android)" UsesYYC="\#(yyc)" "#
+        + #"Installable="\#(installable)" ProfileNotes="Line one&#xA;Line two" />"#
+}
+
+@Test func readsAtomicsProfileXML() throws {
+    let profile = try #require(ProfileXML(atomicProfile().trimmingCharacters(in: CharacterSet(charactersIn: "\u{FEFF}"))))
+    #expect(profile.name == "Atomic Mod")
+    #expect(profile.version == "2.0")
+    #expect(profile.operatingSystem == "Mac")
+    #expect(profile.notes == "Line one\nLine two")
+    #expect(profile.installable)
+    #expect(!profile.usesYYC)
+}
+
+@Test func readsAtomicMacAndLinuxMods() throws {
+    let mods = Mods()
+    for os in ["Mac", "Linux"] {
+        var files = ["profile.xml": atomicProfile(os: os), "game.xdelta": "g", "AM2R.xdelta": "r",
+                     "files_to_copy/lang/english.ini": "[en]", "files_to_copy/musarea1a.ogg": "o"]
+        if os == "Mac" { files["Info.plist"] = "<plist/>" }
+        let package = try ModPackage.read(try mods.zip(os, files))
+        #expect(package.root == "")
+        #expect(package.name == "Atomic Mod")
+        #expect(package.gamePatch == "game.xdelta")
+        #expect(package.hasFilesToCopy)
+    }
+}
+
+@Test func readsAnAtomicWindowsModThatAlsoSupportsAndroid() throws {
+    let mods = Mods()
+    let zip = try mods.zip("android", ["profile.xml": atomicProfile(os: "Windows", android: true), "data.xdelta": "d", "AM2R.xdelta": "r",
+                                       "droid.xdelta": "a", "android/AM2RWrapper.apk": "apk", "android/AM2R.ini": "[ini]"])
+    let package = try ModPackage.read(zip)
+    #expect(package.gamePatch == "data.xdelta")
+    #expect(!package.hasFilesToCopy)
+}
+
+@Test func readsAProfileXMLThatDeclaresUTF16() throws {
+    // .NET writers that serialize to a string declare utf-16 although the file is UTF-8.
+    let mods = Mods()
+    let zip = try mods.zip("utf16", ["profile.xml": atomicProfile(declaredEncoding: "utf-16"), "game.xdelta": "g"])
+    #expect(try ModPackage.read(zip).name == "Atomic Mod")
+}
+
+@Test func refusesAtomicYYCAndArchivedMods() throws {
+    let mods = Mods()
+    // A Windows YYC mod has its code in the runner: only AM2R.xdelta, no data.xdelta.
+    #expect(throws: ModPackage.Failure.yyc(name: "Fast Mod")) {
+        try ModPackage.read(try mods.zip("yyc", ["profile.xml": atomicProfile(os: "Windows", name: "Fast Mod", yyc: true), "AM2R.xdelta": "r"]))
+    }
+    // Installable="false" marks archived Community Updates profiles that AM2RLauncher only lists.
+    #expect(throws: ModPackage.Failure.notInstallable(name: "Old Updates")) {
+        try ModPackage.read(try mods.zip("archived", ["profile.xml": atomicProfile(name: "Old Updates", installable: false), "game.xdelta": "g"]))
+    }
+}

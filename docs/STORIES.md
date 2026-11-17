@@ -271,11 +271,12 @@ UX:
 - Flow: Profile › Install Mod… (⌥⌘O), or drop a .zip on the Profiles page -> open panel filtered to .zip -> the install page "Installing <Mod> <version>" with Reading the mod, Patching AM2R 1.1, Copying game files -> the new profile's Play page. Way back: Cancel during install; Escape closes the open panel.
 - Surface: the same install page as Community Updates, in the main window; no sheet.
 - States: no AM2R 1.1 yet -> the menu item is off, with help "Install AM2R first"; reading/patching/copying as for Community Updates; error inline on the install page with Choose Another Mod… and Cancel; done -> "<Mod> is ready", then Play.
-- Words: "Install Mod…", "Choose Another Mod…", errors: "This zip isn't an AM2R mod. It has no profile.xml." / "<Mod> is built with YYC, so it only runs with its own Windows runner." / "<Mod> has no patch for the game data." / "Patching failed. This mod doesn't match AM2R 1.1." Play page: "Version 1.2 · by <Author> · Native".
+- Words: "Install Mod…", "Choose Another Mod…", errors: "This zip isn't an AM2R mod. It has no profile.xml." / "<Mod> is built with YYC, so it only runs with its own Windows runner." / "<Mod> has no patch for the game data." / "Patching failed. This mod doesn't match AM2R 1.1." / "<Mod> is an archived profile that can't be installed." Play page: "Version 1.2 · by <Author> · Native".
 - Access: the progress steps are announced as for Community Updates; errors have an icon and words.
 Acceptance:
 - [unit] A mod zip is read: profile.xml at the top or one folder down, game.xdelta preferred over data.xdelta, YYC and patch-less mods refused with a reason, macOS junk (__MACOSX) ignored.
 - [unit] profile.xml attributes are read by name: Version="1.2" wins over XMLVersion="1", &amp; is decoded.
+- [unit] Every zip Atomic (the community mod packer) makes is read: Mac and Linux (game.xdelta, Info.plist), Windows with Android extras (droid.xdelta, android/), its XmlSerializer profile.xml (byte order mark, xsi namespaces, lowercase booleans, even a utf-16 declaration on a UTF-8 file); YYC and Installable="false" (archived profiles) refused with a reason.
 - [self] Installing a mod builds a profile with the mod's name, version and author, marked as a mod, on the native engine, with no update banner.
 - [snap] The install page shows the mod's name; the Play page shows the author.
 - [manual] A real community mod installs and plays.

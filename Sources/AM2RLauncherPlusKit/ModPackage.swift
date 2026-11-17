@@ -6,6 +6,9 @@ public struct ProfileXML: Equatable, Sendable {
     public var attributes: [String: String]
 
     public init?(_ xml: String) {
+        // The text is already decoded, so the declared encoding no longer applies: .NET writers that
+        // serialize to a string declare utf-16 for a UTF-8 file, and the parser would then misread it.
+        let xml = xml.replacing(/^(\s*<\?xml[^>]*?)\s+encoding\s*=\s*["'][^"']*["']/, with: { $0.output.1 })
         guard let data = xml.data(using: .utf8) else { return nil }
         let reader = RootAttributes()
         let parser = XMLParser(data: data)
@@ -28,6 +31,9 @@ public struct ProfileXML: Equatable, Sendable {
     public var notes: String { attributes["ProfileNotes"] ?? "" }
     public var operatingSystem: String { attributes["OperatingSystem"] ?? "" }
     public var usesYYC: Bool { flag("UsesYYC") }
+    /// Installable="false" marks archived Community Updates profiles that AM2RLauncher only lists.
+    /// Older mod packers leave it out, so a missing value means installable.
+    public var installable: Bool { attributes["Installable"] == nil || flag("Installable") }
 
     private func nonEmpty(_ name: String) -> String? {
         guard let value = attributes[name]?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else { return nil }
@@ -57,6 +63,7 @@ public struct ModPackage: Equatable, Sendable {
         case yyc(name: String)
         case noGamePatch(name: String)
         case builtOnAM2R11(name: String)
+        case notInstallable(name: String)
 
         public var message: String {
             switch self {
@@ -65,6 +72,7 @@ public struct ModPackage: Equatable, Sendable {
             case .yyc(let name): "\(name) is built with YYC, so it only runs with its own Windows runner."
             case .noGamePatch(let name): "\(name) has no patch for the game data."
             case .builtOnAM2R11(let name): "\(name) is built on AM2R 1.1, which plays badly here. Mods built on Community Updates 1.5 or later work."
+            case .notInstallable(let name): "\(name) is an archived profile that can't be installed."
             }
         }
     }
@@ -102,6 +110,7 @@ public struct ModPackage: Equatable, Sendable {
               let profile = ProfileXML(text.trimmingCharacters(in: CharacterSet(charactersIn: "\u{FEFF}")))
         else { throw .notAMod }
         let name = profile.name ?? zip.deletingPathExtension().lastPathComponent
+        if !profile.installable { throw .notInstallable(name: name) }
         if profile.usesYYC { throw .yyc(name: name) }
         guard let patch = gamePatch(in: entries, root: root) else { throw .noGamePatch(name: name) }
         return ModPackage(zip: zip, root: root, profile: profile, gamePatch: patch,
