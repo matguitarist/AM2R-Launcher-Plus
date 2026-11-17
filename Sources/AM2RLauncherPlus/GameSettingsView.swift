@@ -2,11 +2,15 @@ import AM2RLauncherPlusKit
 import GameController
 import SwiftUI
 
-/// Display, controller and language of one profile, written to its config.ini (S-010 to S-012).
-/// Shown on the Play page under the Play button: they belong to the profile, not the app.
+/// One profile's settings, written to its config.ini (S-010 to S-012, S-035, S-038): they belong to
+/// the profile, not the app. The Play page shows display, controller, sound and language under the
+/// Play button; the Extras page shows the game's extra options and the save slot tools (S-039).
 struct GameSettingsView<Header: View>: View {
+    enum Part { case play, extras }
+
     @Environment(AppModel.self) private var model
     let profile: Profile
+    var part = Part.play
     /// Sits above the first section and scrolls with the form, so the page
     /// has one scroll bar at the window edge.
     @ViewBuilder var header: Header
@@ -20,6 +24,8 @@ struct GameSettingsView<Header: View>: View {
 
     var body: some View {
         Form {
+            switch part {
+            case .play:
                 Section {
                     Group {
                         Toggle("Fullscreen", isOn: $settings.fullscreen)
@@ -40,19 +46,9 @@ struct GameSettingsView<Header: View>: View {
                     }
                     .help("Draw scanlines or an old CRT screen over the game")
                 } header: {
-                    VStack(alignment: .leading, spacing: Space.xxl) {
-                        header
-                            .font(.body)
-                            .fontWeight(.regular)
-                            .frame(maxWidth: .infinity)
-                        Text("Display")
-                    }
+                    pageHeader("Display")
                 } footer: {
-                    if model.isPlaying {
-                        Text("Quit AM2R to change these settings.")
-                    } else if !canWrite {
-                        Text("\(profile.name) saves its own settings the first time it starts. Play it once, then change them here.")
-                    }
+                    statusFooter
                 }
                 Section("Controller") {
                     Picker("Layout", selection: $settings.controller) {
@@ -72,6 +68,24 @@ struct GameSettingsView<Header: View>: View {
                     .help("The buttons shown in the game's hints")
                     LabeledContent("Connected", value: controllers.names.isEmpty ? "No controller" : controllers.names.formatted(.list(type: .and)))
                 }
+                Section("Sound") {
+                    volume("Sound Effects", value: $settings.soundVolume)
+                    volume("Music", value: $settings.musicVolume)
+                }
+                .disabled(!canWrite)
+                Section("Language") {
+                    if languages.isEmpty {
+                        Text("This profile has no languages list.")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Picker("Game Language", selection: $settings.language) {
+                            ForEach(languages) { Text($0.name).tag($0.index) }
+                        }
+                        .disabled(!canWrite)
+                    }
+                }
+                EngineSection(profile: profile)
+            case .extras:
                 Section {
                     Toggle(isOn: $settings.showTimer) {
                         Text("In-Game Timer")
@@ -102,33 +116,19 @@ struct GameSettingsView<Header: View>: View {
                         Text("The Fusion Suit takes its Samus Returns colors in Fusion mode")
                     }
                 } header: {
-                    Text("Extras")
-                }
-                .disabled(!canWrite)
-                Section("Sound") {
-                    volume("Sound Effects", value: $settings.soundVolume)
-                    volume("Music", value: $settings.musicVolume)
+                    pageHeader("Game Options")
+                } footer: {
+                    statusFooter
                 }
                 .disabled(!canWrite)
                 UpgradesSection(profile: profile)
-                Section("Language") {
-                    if languages.isEmpty {
-                        Text("This profile has no languages list.")
-                            .foregroundStyle(.secondary)
-                    } else {
-                        Picker("Game Language", selection: $settings.language) {
-                            ForEach(languages) { Text($0.name).tag($0.index) }
-                        }
-                        .disabled(!canWrite)
-                    }
+            }
+            if let saveError {
+                Section {
+                    Label(saveError, systemImage: "exclamationmark.triangle.fill")
+                        .symbolRenderingMode(.multicolor)
                 }
-                EngineSection(profile: profile)
-                if let saveError {
-                    Section {
-                        Label(saveError, systemImage: "exclamationmark.triangle.fill")
-                            .symbolRenderingMode(.multicolor)
-                    }
-                }
+            }
         }
         .formStyle(.grouped)
         .disabled(model.isPlaying)
@@ -157,6 +157,25 @@ struct GameSettingsView<Header: View>: View {
                 profile.automaticPrompts = false
                 settings.buttonPrompts = set
             }
+        }
+    }
+
+    /// The page's own header above the first section's title, scrolling with the form.
+    private func pageHeader(_ title: LocalizedStringKey) -> some View {
+        VStack(alignment: .leading, spacing: Space.xxl) {
+            header
+                .font(.body)
+                .fontWeight(.regular)
+                .frame(maxWidth: .infinity)
+            Text(title)
+        }
+    }
+
+    @ViewBuilder private var statusFooter: some View {
+        if model.isPlaying {
+            Text("Quit AM2R to change these settings.")
+        } else if !canWrite {
+            Text("\(profile.name) saves its own settings the first time it starts. Play it once, then change them here.")
         }
     }
 

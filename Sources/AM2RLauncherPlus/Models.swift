@@ -246,13 +246,14 @@ struct LogSheetItem: Identifiable, Equatable {
 
 /// The sidebar pages. Snapshot mode walks through every case.
 enum SidebarItem: String, CaseIterable, Identifiable {
-    case play, profiles, mods, log
+    case play, extras, profiles, mods, log
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .play: "Play"
+        case .extras: "Extras"
         case .profiles: "Profiles"
         case .mods: "Mods"
         case .log: "Log"
@@ -262,6 +263,7 @@ enum SidebarItem: String, CaseIterable, Identifiable {
     var symbol: String {
         switch self {
         case .play: "play.circle"
+        case .extras: "sparkles"
         case .profiles: "square.stack"
         case .mods: "puzzlepiece.extension"
         case .log: "list.bullet.rectangle"

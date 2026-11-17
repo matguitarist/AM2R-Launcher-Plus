@@ -362,6 +362,16 @@ Acceptance:
 - [manual] Each option changes the game as described.
 Status: done (2026-11-17), [manual] waits on the owner
 
+### S-039 Extras get their own page
+As the player, I find the game's extras and the save slot tools on their own page in the sidebar, so the Play page stays about playing.
+Screens: extras
+Depends: S-035, S-037, S-038
+Notes: Owner's ask 2026-11-17. Sidebar: Play ⌘1, Extras ⌘2, Profiles ⌘3, Mods ⌘4, Log ⌘5. The Extras page edits the current profile, like the Play page; GameSettingsView has a part (play or extras) so both share one config.ini reader and writer.
+Acceptance:
+- [snap] The sidebar lists Extras second; the Extras page shows the profile, Game Options (seven toggles) and Save Slots; the Play page no longer shows them.
+- [self] The existing settings and save slot checks still pass.
+Status: done (2026-11-17)
+
 ## Later
 - Metal renderer and MetalFX upscaling in Butterscotch (a4f648ca)
 - Our own game patch (UndertaleModLib, .NET on the developer Mac) for tweaks Community Updates lacks: shorter item fanfare, faster save stations

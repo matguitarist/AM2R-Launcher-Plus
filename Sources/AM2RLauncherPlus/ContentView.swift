@@ -13,6 +13,7 @@ struct ContentView: View {
         } detail: {
             switch model.sidebar ?? .play {
             case .play: PlayPage()
+            case .extras: ExtrasPage()
             case .profiles: ProfilesPage()
             case .mods: ModsPage()
             case .log: DebugLogPage()
@@ -73,6 +74,33 @@ struct PlayPage: View {
         .sheet(item: Bindable(model).logSheet) { item in
             LogSheet(item: item)
         }
+    }
+}
+
+/// The game's extra options and the save slot tools for the current profile (S-039).
+struct ExtrasPage: View {
+    @Environment(AppModel.self) private var model
+    @Query(sort: \Profile.installedAt, order: .reverse) private var profiles: [Profile]
+
+    var body: some View {
+        Group {
+            if let profile = CurrentProfile.pick(profiles, selection: model.selection) {
+                GameSettingsView(profile: profile, part: .extras) {
+                    VStack(spacing: Space.xs) {
+                        Text(profile.name)
+                            .font(.title2.bold())
+                        Text("These options belong to this profile. Pick another one on the Profiles page.")
+                            .foregroundStyle(.secondary)
+                    }
+                    .multilineTextAlignment(.center)
+                    .padding(.top, Space.lg)
+                }
+            } else {
+                ContentUnavailableView("No Profiles", systemImage: SidebarItem.extras.symbol,
+                                       description: Text("Install Community Updates or a mod to set its extras."))
+            }
+        }
+        .navigationTitle("Extras")
     }
 }
 
