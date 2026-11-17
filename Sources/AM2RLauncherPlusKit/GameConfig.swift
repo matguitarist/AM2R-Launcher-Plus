@@ -154,8 +154,21 @@ public struct GameSettings: Equatable, Sendable {
     public var lowHealthAlarm = true
     public var earlyBaby = false
     public var extremeLabMetroids = false
+    /// [Extras] FusionSuitMSR: Samus Returns colors for the Fusion Suit, in Fusion mode.
+    public var fusionSuitMSR = false
+    /// [Extras] MapItemsCollected: the map marks collected items; the game shows it only after a clear.
+    public var mapItemsCollected = false
+    /// [GameplayMenu] InsanityMode: save stations break and enemies drop Power Bombs, in every save.
+    public var insanityMode = false
+    /// [Screen] SensitivityMode: softer flashing lights.
+    public var sensitivityMode = false
+    /// [Sound], 0-100 as in the game's Sound menu.
+    public var soundVolume = 100
+    public var musicVolume = 100
 
     public init() {}
+
+    public static let volumes = 0...100
 
     public static let scales = 1...4
     public static let fullscreenScales = 0...4
@@ -173,6 +186,15 @@ public struct GameSettings: Equatable, Sendable {
         lowHealthAlarm = extra("LowHealthWarning", 1) != 0
         earlyBaby = extra("EarlyBaby", 0) != 0
         extremeLabMetroids = extra("ExtremeLabMonsters", 0) != 0
+        fusionSuitMSR = extra("FusionSuitMSR", 0) != 0
+        mapItemsCollected = extra("MapItemsCollected", 0) != 0
+        func value(_ key: String, in section: String, _ fallback: Int) -> Int {
+            ini.value(key, in: section).flatMap(Double.init).map { Int($0) } ?? fallback
+        }
+        insanityMode = value("InsanityMode", in: "GameplayMenu", 0) != 0
+        sensitivityMode = value("SensitivityMode", in: "Screen", 0) != 0
+        soundVolume = min(max(value("SoundVolume", in: "Sound", 100), 0), 100)
+        musicVolume = min(max(value("MusicVolume", in: "Sound", 100), 0), 100)
         clampScale()
     }
 
@@ -188,15 +210,22 @@ public struct GameSettings: Equatable, Sendable {
         ini.set("Widescreen", to: widescreen ? "1" : "0", in: "Screen")
         ini.set("Language", to: String(language), in: "Screen")
         controller.apply(to: &ini)
-        // An extra still at the game's default and not in the file yet stays out of it.
-        func extra(_ key: String, _ value: Int, default fallback: Int) {
-            if value != fallback || ini.value(key, in: "Extras") != nil { ini.set(key, to: String(value), in: "Extras") }
+        // A setting still at the game's default and not in the file yet stays out of it.
+        func set(_ key: String, _ value: Int, default fallback: Int, in section: String) {
+            if value != fallback || ini.value(key, in: section) != nil { ini.set(key, to: String(value), in: section) }
         }
+        func extra(_ key: String, _ value: Int, default fallback: Int) { set(key, value, default: fallback, in: "Extras") }
         extra("Controller", buttonPrompts.rawValue, default: 0)
         extra("DisplayIGT", showTimer ? 1 : 0, default: 0)
         extra("LowHealthWarning", lowHealthAlarm ? 1 : 0, default: 1)
         extra("EarlyBaby", earlyBaby ? 1 : 0, default: 0)
         extra("ExtremeLabMonsters", extremeLabMetroids ? 1 : 0, default: 0)
+        extra("FusionSuitMSR", fusionSuitMSR ? 1 : 0, default: 0)
+        extra("MapItemsCollected", mapItemsCollected ? 1 : 0, default: 0)
+        set("InsanityMode", insanityMode ? 1 : 0, default: 0, in: "GameplayMenu")
+        set("SensitivityMode", sensitivityMode ? 1 : 0, default: 0, in: "Screen")
+        set("SoundVolume", soundVolume, default: 100, in: "Sound")
+        set("MusicVolume", musicVolume, default: 100, in: "Sound")
     }
 
     // MARK: Files
@@ -214,7 +243,8 @@ public struct GameSettings: Equatable, Sendable {
     /// so the launcher must never create a partial one for them.
     public static func gameHasWritten(in saveFolder: URL) -> Bool {
         guard let text = try? String(contentsOf: configFile(in: saveFolder), encoding: .utf8) else { return false }
-        return IniFile(text: text).value("SoundVolume", in: "Sound") != nil
+        // SoundEffects: AM2R 1.1 and Community Updates both write it; the launcher never does.
+        return IniFile(text: text).value("SoundEffects", in: "Sound") != nil
     }
 
     /// Whether a gamepad button holds a value no AM2R writes (GameMaker's are 32769 and up). An AM2R 1.1

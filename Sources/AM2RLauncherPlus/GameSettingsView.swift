@@ -29,6 +29,10 @@ struct GameSettingsView<Header: View>: View {
                             }
                         }
                         Toggle("Widescreen", isOn: $settings.widescreen)
+                        Toggle(isOn: $settings.sensitivityMode) {
+                            Text("Reduce Flashing Lights")
+                            Text("Softer flashes and alarms (the game's Sensitivity Mode)")
+                        }
                     }
                     .disabled(!canWrite)
                     Picker("Filter", selection: Bindable(profile).displayFilter) {
@@ -85,8 +89,25 @@ struct GameSettingsView<Header: View>: View {
                         Text("Extreme Lab Metroids")
                         Text("More Genetics Lab Metroids, and they hit harder")
                     }
+                    Toggle(isOn: $settings.insanityMode) {
+                        Text("Insanity Mode")
+                        Text("Save stations break and enemies drop Power Bombs, in every save")
+                    }
+                    Toggle(isOn: $settings.mapItemsCollected) {
+                        Text("Collected Items on Map")
+                        Text("Marks the items you have on the map, once you've finished the game")
+                    }
+                    Toggle(isOn: $settings.fusionSuitMSR) {
+                        Text("Samus Returns Fusion Suit")
+                        Text("The Fusion Suit takes its Samus Returns colors in Fusion mode")
+                    }
                 } header: {
                     Text("Extras")
+                }
+                .disabled(!canWrite)
+                Section("Sound") {
+                    volume("Sound Effects", value: $settings.soundVolume)
+                    volume("Music", value: $settings.musicVolume)
                 }
                 .disabled(!canWrite)
                 UpgradesSection(profile: profile)
@@ -135,6 +156,21 @@ struct GameSettingsView<Header: View>: View {
             case .fixed(let set):
                 profile.automaticPrompts = false
                 settings.buttonPrompts = set
+            }
+        }
+    }
+
+    /// A 0-100 slider with the value beside it, like the game's Sound menu.
+    private func volume(_ title: LocalizedStringKey, value: Binding<Int>) -> some View {
+        LabeledContent(title) {
+            HStack(spacing: Space.md) {
+                Slider(value: Binding { Double(value.wrappedValue) } set: { value.wrappedValue = Int($0.rounded()) },
+                       in: Double(GameSettings.volumes.lowerBound)...Double(GameSettings.volumes.upperBound))
+                    .frame(width: 180)
+                Text("\(value.wrappedValue)%")
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+                    .frame(width: 40, alignment: .trailing)
             }
         }
     }

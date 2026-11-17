@@ -128,7 +128,7 @@ struct GameSettingsTests {
         #expect(GameSettings.removeLauncherOnlyConfig(in: saves))
         #expect(!FileManager.default.fileExists(atPath: GameSettings.configFile(in: saves).path))
         // The game's own file stays, with the launcher's keys merged in.
-        try "[Screen]\r\nFullscreen=\"1\"\r\n[Sound]\r\nSoundVolume=\"100\"\r\n".write(to: GameSettings.configFile(in: saves), atomically: true, encoding: .utf8)
+        try "[Screen]\r\nFullscreen=\"1\"\r\n[Sound]\r\nSoundVolume=\"100\"\r\nSoundEffects=\"1\"\r\n".write(to: GameSettings.configFile(in: saves), atomically: true, encoding: .utf8)
         #expect(GameSettings.gameHasWritten(in: saves))
         #expect(!GameSettings.removeLauncherOnlyConfig(in: saves))
         #expect(GameSettings.read(from: saves).fullscreen)
@@ -154,6 +154,33 @@ struct GameSettingsTests {
         #expect(ini.value("LowHealthWarning", in: "Extras") == nil)
         #expect(GameSettings(ini: ini) == settings)
         #expect(GameSettings(ini: IniFile(text: "[Extras]\nController=\"9\"\n")).buttonPrompts == .xbox)
+    }
+
+    @Test func volumesAndMoreOptionsUseTheGamesDefaults() throws {
+        var ini = IniFile(text: "[Sound]\r\nSoundEffects=\"1\"\r\nMusicVolume=\"140\"\r\n")
+        var settings = GameSettings(ini: ini)
+        #expect(settings.soundVolume == 100 && settings.musicVolume == 100)
+        #expect(!settings.sensitivityMode && !settings.insanityMode && !settings.fusionSuitMSR && !settings.mapItemsCollected)
+        settings.soundVolume = 40
+        settings.sensitivityMode = true
+        settings.insanityMode = true
+        settings.mapItemsCollected = true
+        settings.apply(to: &ini)
+        #expect(ini.value("SoundVolume", in: "Sound") == "40")
+        #expect(ini.value("MusicVolume", in: "Sound") == "100")
+        #expect(ini.value("SoundEffects", in: "Sound") == "1")
+        #expect(ini.value("SensitivityMode", in: "Screen") == "1")
+        #expect(ini.value("InsanityMode", in: "GameplayMenu") == "1")
+        #expect(ini.value("MapItemsCollected", in: "Extras") == "1")
+        #expect(ini.value("FusionSuitMSR", in: "Extras") == nil)
+        #expect(GameSettings(ini: ini) == settings)
+        // A launcher-only file still counts as partial: the launcher never writes SoundEffects.
+        let saves = try folder()
+        defer { try? FileManager.default.removeItem(at: saves) }
+        var loud = GameSettings()
+        loud.musicVolume = 50
+        try loud.write(to: saves)
+        #expect(!GameSettings.gameHasWritten(in: saves))
     }
 
     @Test func promptsMatchTheController() {

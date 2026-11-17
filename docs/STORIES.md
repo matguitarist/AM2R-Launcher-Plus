@@ -350,6 +350,18 @@ Acceptance:
 - [manual] The edited slot loads in the game with the upgrades (2026-11-17: a copy of the owner's save loaded with the Gravity Suit, 10 tanks, 250/20/20).
 Status: done (2026-11-17)
 
+### S-038 More game options: flashing lights, sound, Insanity Mode
+As the player, I set the game's other options from the launcher before I start: softer flashing lights, sound and music volume, Insanity Mode, collected items on the map, and the Samus Returns Fusion Suit.
+Screens: play (Display, Extras, Sound)
+Depends: S-010, S-035
+Thimble: d6531953
+Notes: Keys from Community Updates 1.5.5 load_gameoptions (UMT dump 2026-11-17): [Screen] SensitivityMode (0), [Sound] SoundVolume and MusicVolume (100, 0-100 as the Sound menu), [GameplayMenu] InsanityMode (0; global, breaks save stations, Power Bomb drops), [Extras] MapItemsCollected (0; the game shows it only once global.unlock is set by a clear), FusionSuitMSR (0; Fusion mode only). A key at its default and missing from the file stays out of it. "The game has written config.ini" is now told by [Sound] SoundEffects, which the launcher never writes (it was SoundVolume). HUD and control options stay in the game's own menus.
+Acceptance:
+- [unit] Each option reads with the game's default, volumes are clamped to 0-100, writes leave other lines, and a launcher-only file still counts as partial.
+- [snap] Display shows Reduce Flashing Lights, Extras the three new toggles, Sound two sliders with percentages.
+- [manual] Each option changes the game as described.
+Status: done (2026-11-17), [manual] waits on the owner
+
 ## Later
 - Metal renderer and MetalFX upscaling in Butterscotch (a4f648ca)
 - Our own game patch (UndertaleModLib, .NET on the developer Mac) for tweaks Community Updates lacks: shorter item fanfare, faster save stations
