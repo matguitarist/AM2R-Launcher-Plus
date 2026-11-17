@@ -77,6 +77,22 @@ struct PlayPage: View {
     }
 }
 
+/// The Play page's banner: an in-game screenshot of AM2R, the ship landing on SR388.
+struct HeaderArt: View {
+    static let image = Bundle.module.url(forResource: "Header", withExtension: "heic").flatMap(NSImage.init(contentsOf:))
+
+    var body: some View {
+        if let image = Self.image {
+            Image(nsImage: image)
+                .resizable()
+                .interpolation(.high)
+                .aspectRatio(contentMode: .fit)
+                .clipShape(RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
+                .accessibilityLabel("Samus standing on her gunship on SR388, from AM2R")
+        }
+    }
+}
+
 /// The game's extra options and the save slot tools for the current profile (S-039).
 struct ExtrasPage: View {
     @Environment(AppModel.self) private var model
@@ -159,6 +175,7 @@ extension PlayPage {
     /// Name, version and engine, Play, then last played and any problem.
     func hero(_ profile: Profile) -> some View {
         VStack(spacing: Space.lg) {
+            HeaderArt()
             Text(profile.name)
                 .font(.largeTitle)
                 .fontWeight(.bold)

@@ -45,6 +45,8 @@ for bundle in "$scratch/$config"/*.bundle(N); do cp -R "$bundle" "$app/Contents/
 # Sparkle (launcher updates, S-032), next to the executable's @executable_path/../Frameworks rpath.
 mkdir -p "$app/Contents/Frameworks"
 cp -R "$scratch/$config/Sparkle.framework" "$app/Contents/Frameworks/"
+# The About window's credits.
+cp -X "$here/Resources/Credits.rtf" "$app/Contents/Resources/"
 # The icon: Icon/AppIcon.icon -> Resources/Assets.car + AppIcon.icns, rebuilt when it changed.
 if [[ -d "$here/Icon/AppIcon.icon" ]]; then
   car="$here/Resources/Assets.car"

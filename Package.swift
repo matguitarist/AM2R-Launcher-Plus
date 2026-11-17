@@ -17,6 +17,8 @@ let package = Package(
             name: "AM2RLauncherPlus",
             dependencies: ["AM2RLauncherPlusKit", .product(name: "Sparkle", package: "Sparkle"),
                            .product(name: "LogKitUI", package: "LogKit")],
+            // The Play page's header: an in-game screenshot of AM2R (README, Credits).
+            resources: [.copy("Resources/Header.heic")],
             // App code runs on the main thread unless you say otherwise.
             swiftSettings: [.defaultIsolation(MainActor.self)],
             linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]

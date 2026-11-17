@@ -45,5 +45,6 @@ The bundled engine, Butterscotch, is AGPL-3.0 and ships as a separate executable
 and our patch (`patches/butterscotch/`), so its corresponding source comes with every build.
 
 AM2R (Another Metroid 2 Remake) is a fan game by DoctorM64. The Community Updates and the Mac patch
-data are by the AM2R Community Developers. This launcher is an unofficial, independent project, not
+data are by the AM2R Community Developers. The Play page's header is an in-game screenshot of AM2R
+(`Sources/AM2RLauncherPlus/Resources/Header.heic`); its art is AM2R's. This launcher is an unofficial, independent project, not
 affiliated with them or with Nintendo.
