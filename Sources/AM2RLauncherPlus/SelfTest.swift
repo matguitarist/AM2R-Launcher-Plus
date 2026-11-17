@@ -172,6 +172,32 @@ enum SelfTest {
                 model.backupMessage = nil
             }
 
+            // S-037: give a save slot every upgrade, after a backup.
+            do {
+                let fm = FileManager.default
+                let upgraded = model.addProfile(name: "Upgraded", version: "1.5.5")
+                let saves = GameRunner.saveFolder(for: upgraded), gameID: UInt32 = 971_912_648
+                try? fm.createDirectory(at: upgraded.folder, withIntermediateDirectories: true)
+                try? fm.createDirectory(at: saves, withIntermediateDirectories: true)
+                try? GameSave.sampleGameData(gameID: gameID).write(to: upgraded.folder.appending(path: "game.ios"))
+                let slot = saves.appending(path: "save2")
+                try? GameSave.sample(gameID: gameID).write(to: slot)
+                check("the slots list finds save2 only", GameSave.slots(in: saves) == [slot])
+                let result = await model.giveUpgrades(.everything, to: slot, profile: upgraded)
+                let edited = (try? Data(contentsOf: slot)).flatMap { try? GameSave(decrypting: $0, gameID: gameID) }
+                check("Every Upgrade, Everything gives the slot the screw attack and ten energy tanks",
+                      (try? result.get()) != nil && edited?.value(inventory: 10) == 1 && edited?.value(main: 4) == 10,
+                      String(describing: result))
+                let list = SaveBackup.list(in: DataFolder.backups(for: upgraded.uuid))
+                check("Every Upgrade backs up the saves first", list.contains { $0.name.hasSuffix("(before upgrades)") })
+                try? Data("not a save".utf8).write(to: slot)
+                let refused = await model.giveUpgrades(.abilities, to: slot, profile: upgraded)
+                check("a slot the game can't load is refused and left as it was",
+                      (try? String(contentsOf: slot, encoding: .utf8)) == "not a save" && (try? refused.get()) == nil)
+                model.delete(upgraded, keepSaves: false)
+                model.backupMessage = nil
+            }
+
             // S-020: the banner shows only for a profile built from older patch data.
             do {
                 let old = model.addProfile(name: "Old", version: "1.5.5")

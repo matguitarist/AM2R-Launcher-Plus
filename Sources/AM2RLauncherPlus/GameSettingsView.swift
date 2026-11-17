@@ -89,6 +89,7 @@ struct GameSettingsView<Header: View>: View {
                     Text("Extras")
                 }
                 .disabled(!canWrite)
+                UpgradesSection(profile: profile)
                 Section("Language") {
                     if languages.isEmpty {
                         Text("This profile has no languages list.")
@@ -170,7 +171,7 @@ private enum PromptChoice: Hashable {
     case fixed(ButtonPrompts)
 }
 
-private struct LoadKey: Equatable {
+struct LoadKey: Equatable {
     var profile: UUID
     var playing: Bool
 }

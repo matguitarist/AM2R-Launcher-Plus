@@ -333,6 +333,23 @@ Acceptance:
 - [manual] A real Randovania seed exports from the prepared folder, imports, and plays.
 Status: todo
 
+### S-037 Give a save every upgrade
+As the player, I give one of my save slots every upgrade, to try the late-game moves or play at full power.
+Screens: play (Save Slots section)
+Depends: S-023
+Thimble: 84888ac7
+Notes: Community Updates 1.5.5 has no cheat for it (title codes unlock modes only, [Debug] IdLikeToUseTheDebugToolsPlease is unused, the developer keys are gone), so the launcher edits the slot. sv6_save format: crypt() XOR with a key from GEN8 game_id (every (rate+1)th byte, rate = round-half-even(2 x size / 10000)), an RC4 header "[AM2R SaveData V7.0]", ten base64 ds_list_write lines (Butterscotch tags 0 real, 1 string, 2 array, 3 pointer, 5 undefined, 7 int32, 10 int64, 13 bool) and the seed. Owner's call 2026-11-17: both choices. Abilities, Beams and Suits = inventory 1...14 on, Gravity Suit, items 0...14 collected; Everything, Maxed adds the developers' full loadout tanks (get_loadout 10: 10 energy, 44 missile, 10 super, 10 power bomb). Native engine only (the Rosetta runner keeps saves elsewhere).
+UX:
+- Flow: Play page > Save Slots > Every Upgrade > Give... > Save N > Abilities, Beams and Suits / Everything, Maxed.
+- States: no saves -> Give... is off, "No saves yet. Play and save first."; while playing -> off; done -> "Save N now has every upgrade. Load it in the game."; failure -> the reason, slot untouched.
+Acceptance:
+- [unit] A save decrypts, reads and writes back byte for byte; a wrong game_id or a non-save is refused.
+- [unit] Abilities sets every ability, beam and the Gravity Suit and marks the 15 major items collected, leaving tanks; Everything also sets the four tank counts; only those three lines change.
+- [self] Giving upgrades backs the saves up first ("before upgrades") and edits the slot; a slot the game can't load is refused and left as it was.
+- [snap] The Play page shows Save Slots with Every Upgrade.
+- [manual] The edited slot loads in the game with the upgrades (2026-11-17: a copy of the owner's save loaded with the Gravity Suit, 10 tanks, 250/20/20).
+Status: done (2026-11-17)
+
 ## Later
 - Metal renderer and MetalFX upscaling in Butterscotch (a4f648ca)
 - Our own game patch (UndertaleModLib, .NET on the developer Mac) for tweaks Community Updates lacks: shorter item fanfare, faster save stations
