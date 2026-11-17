@@ -5,7 +5,7 @@ A native Apple Silicon Mac app that turns your own AM2R 1.1 copy into the latest
 modern Mac.
 
 App name in the UI: **AM2R Launcher Plus**. Bundle id: `com.mathieu.am2rlauncherplus`. Folder: this
-project (`~/Developer/Am2r-launcher-plus`). _Decided by the agent._
+project (`~/Developer/AM2RLauncherPlus`). _Decided by the agent._
 
 ## Replaces
 The community AM2RLauncher (whose Mac build is "unsupported", .NET, x86_64), plus the manual routine
