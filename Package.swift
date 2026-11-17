@@ -8,7 +8,7 @@ let package = Package(
         // Launcher updates (S-032). build.sh embeds Sparkle.framework in Contents/Frameworks.
         .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.7.0"),
         // The Log page's viewer, shared by my Mac apps.
-        .package(url: "https://github.com/matguitarist/LogKit", from: "0.4.1"),
+        .package(url: "https://github.com/matguitarist/LogKit", from: "0.6.0"),
     ],
     targets: [
         // Rules and data logic with no SwiftUI, so tests run without the app.
