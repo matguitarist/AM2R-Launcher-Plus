@@ -1,6 +1,6 @@
 # Butterscotch patches for AM2R
 
-Applied on Butterscotch ea6b651. `all-current.patch` is the full current diff (apply this one).
+Applied on Butterscotch ad34ff4 (2026-11-15; was ea6b651). `all-current.patch` is the full current diff (apply this one).
 The numbered files are per-change views and overlap: 0003 repeats the 0002 appkit hunk, 0004 repeats the 0003 vm_builtins hunk.
 
 - 0001 GUI layer sized to the window when the game draws the app surface itself (AM2R HUD)
