@@ -1,0 +1,9 @@
+# Builtins AM2R 1.5.5 calls that the engine doesn't have, on purpose: Android touch controls and a debug key.
+show_debug_overlay
+device_mouse_dbclick_enable
+display_get_dpi_x
+display_get_dpi_y
+sprite_assign
+device_mouse_raw_x
+device_mouse_raw_y
+point_in_triangle

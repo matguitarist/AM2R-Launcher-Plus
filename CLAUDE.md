@@ -17,6 +17,7 @@ Shared rules for how every project is laid out and named:
 - `build.sh` builds, signs, and installs `~/Applications/AM2RLauncherPlus.app`, with Sparkle.framework embedded.
 - Release: `tools/release.sh <version>` (settings in `release.conf`, version in `VERSION`). Use the mac-release skill.
 - `tools/builtin-coverage.sh <profile UUID>` lists the GameMaker builtins a profile's game calls that the patched engine lacks or stubs (UndertaleModCli in `~/Library/Developer/AM2RLauncherPlus/umt`). Run it after moving Butterscotch or adding a mod. Names only, never game code.
+- `tools/engine-check.sh <profile UUID>` checks a new engine build before shipping: missing builtins, in-game checks (`tools/engine-check/checks.gml`, injected into a scratch copy of the game), and a playthrough (title, new game, F12, a few steps) compared with reference frames kept in `~/Library/Developer/AM2RLauncherPlus/engine-check/reference`. Run it after `tools/build-butterscotch.sh`; `--update-references` after you looked at changed frames.
 - `Icon/AppIcon.icon` the app icon, an Icon Composer file (JSON plus SVG layers). `build.sh` compiles it with `tools/make_icon.sh`; `tools/icon_review.sh` renders every look into one PNG.
 - `docs/` the brief, the screen index, and the user stories, when they exist.
 
