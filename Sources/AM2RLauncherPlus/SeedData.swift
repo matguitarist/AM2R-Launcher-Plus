@@ -1,4 +1,5 @@
 import AM2RLauncherPlusKit
+import AppKit
 import Foundation
 import SwiftData
 
@@ -65,5 +66,19 @@ enum SeedData {
         try? GameSave.sampleGameData(gameID: gameID).write(to: current.folder.appending(path: "game.ios"))
         try? GameSave.sample(gameID: gameID).write(to: saves.appending(path: "save1"))
         try? GameSave.sampleRandomized(gameID: gameID, gameMode: 4, seed: "3390671227").write(to: saves.appending(path: "save2"))
+        // S-041: three F12 screenshots, cut from the header's in-game picture at the game's size.
+        let snap = Screenshots.folder(in: saves)
+        try? FileManager.default.createDirectory(at: snap, withIntermediateDirectories: true)
+        if let header = Bundle.module.url(forResource: "Header", withExtension: "heic").flatMap(NSImage.init(contentsOf:)),
+           let cg = header.cgImage(forProposedRect: nil, context: nil, hints: nil) {
+            for index in 0..<3 {
+                let step = max(0, cg.width - cg.height * 4 / 3) / 2
+                let crop = CGRect(x: step * index, y: 0, width: cg.height * 4 / 3, height: cg.height)
+                guard let part = cg.cropping(to: crop) else { continue }
+                let rep = NSBitmapImageRep(cgImage: part)
+                rep.size = NSSize(width: 320, height: 240)
+                try? rep.representation(using: .png, properties: [:])?.write(to: snap.appending(path: "snap 000\(index).png"))
+            }
+        }
     }
 }

@@ -223,6 +223,23 @@ enum SelfTest {
                 model.delete(random, keepSaves: false)
             }
 
+            // S-041: F12 screenshots in a profile's save folder, newest first.
+            do {
+                let fm = FileManager.default
+                let shooter = model.addProfile(name: "Screenshots", version: "1.5.5")
+                let snap = Screenshots.folder(in: GameRunner.saveFolder(for: shooter))
+                try? fm.createDirectory(at: snap, withIntermediateDirectories: true)
+                check("a profile with no screenshots lists none", Screenshots.list(in: GameRunner.saveFolder(for: shooter)).isEmpty)
+                for (index, name) in ["snap 0000.png", "snap 0001.png"].enumerated() {
+                    let file = snap.appending(path: name)
+                    try? Data("png".utf8).write(to: file)
+                    try? fm.setAttributes([.modificationDate: Date.now.addingTimeInterval(Double(index))], ofItemAtPath: file.path)
+                }
+                check("screenshots list newest first",
+                      Screenshots.list(in: GameRunner.saveFolder(for: shooter)).map(\.lastPathComponent) == ["snap 0001.png", "snap 0000.png"])
+                model.delete(shooter, keepSaves: false)
+            }
+
             // S-020: the banner shows only for a profile built from older patch data.
             do {
                 let old = model.addProfile(name: "Old", version: "1.5.5")

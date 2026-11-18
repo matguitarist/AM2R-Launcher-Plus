@@ -124,6 +124,7 @@ struct GameSettingsView<Header: View>: View {
                 .disabled(!canWrite)
                 RandomizerSection(profile: profile)
                 UpgradesSection(profile: profile)
+                ScreenshotsSection(profile: profile)
             }
             if let saveError {
                 Section {

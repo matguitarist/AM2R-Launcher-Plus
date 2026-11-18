@@ -393,6 +393,21 @@ Acceptance:
 - [manual] A custom seed gives the same item layout in two new games.
 Status: done (2026-11-18), [manual] waits on the owner
 
+### S-041 See my screenshots
+As the player, I press F12 in the game and find my screenshots in the launcher, without digging through the save folder.
+Screens: extras-randomizer (Screenshots)
+Depends: S-039, engine patch 0013 (screen_save)
+Notes: AM2R's F12 (oControl KeyPress 123) saves snap/snap NNNN.png in the save folder with screen_save; the engine saves the application surface, 320 × 240. The Rosetta runner's data folder links to the same save folder.
+UX:
+- Flow: Extras > Screenshots: the four newest as sharp-pixel thumbnails (a click opens one in Preview), "N screenshots" with Show in Finder.
+- States: none yet: "Press F12 while playing to save a screenshot." and "No screenshots yet"; Show in Finder makes the folder first.
+Acceptance:
+- [unit] The PNGs in snap/ are listed newest first; other files are left out.
+- [self] A profile lists none, then two, newest first.
+- [snap] Extras shows three screenshots and Show in Finder.
+- [manual] F12 in the game, then the shot shows on Extras after quitting (engine check: F12 saves a 320 × 240 PNG).
+Status: done (2026-11-18)
+
 ## Later
 - Metal renderer and MetalFX upscaling in Butterscotch (a4f648ca)
 - Our own game patch (UndertaleModLib, .NET on the developer Mac) for tweaks Community Updates lacks: shorter item fanfare, faster save stations
