@@ -198,6 +198,26 @@ enum SelfTest {
                 model.backupMessage = nil
             }
 
+            // S-044: unlock what finishing the game unlocks, with or without saves.
+            do {
+                let fm = FileManager.default
+                let fresh = model.addProfile(name: "Unlocked", version: "1.5.5")
+                let saves = GameRunner.saveFolder(for: fresh), gameID: UInt32 = 971_912_648
+                let game = fresh.folder.appending(path: "game.ios")
+                try? fm.createDirectory(at: fresh.folder, withIntermediateDirectories: true)
+                try? GameSave.sampleGameData(gameID: gameID).write(to: game)
+                check("a new profile has nothing unlocked", !GameUnlocks.isEverythingUnlocked(saves: saves, game: game))
+                let first = await model.unlockEverything(profile: fresh)
+                check("Unlock Everything works on a profile with no saves yet",
+                      (try? first.get()) != nil && GameUnlocks.isEverythingUnlocked(saves: saves, game: game), String(describing: first))
+                try? GameSave.sample(gameID: gameID).write(to: saves.appending(path: "save1"))
+                _ = await model.unlockEverything(profile: fresh)
+                let list = SaveBackup.list(in: DataFolder.backups(for: fresh.uuid))
+                check("Unlock Everything backs up existing saves first", list.contains { $0.name.hasSuffix("(before unlocks)") })
+                model.delete(fresh, keepSaves: false)
+                model.backupMessage = nil
+            }
+
             // S-040: the randomizer settings in a profile's modifiers.ini, and a randomized save's seed.
             do {
                 let fm = FileManager.default

@@ -449,3 +449,18 @@ Status: done (2026-11-18)
 - Accounts, cloud sync of profiles: one player on one Mac (iCloud save backup stays an idea).
 - Android APK building (the original launcher does it): no Android target here.
 - In-app news feed / changelog browser: the update banner links to the release notes instead.
+
+### S-044 Unlock everything
+As the player, I unlock what finishing the game unlocks (New Game+, Random Game+, Fusion difficulty and the Samus Returns Fusion Suit, the gallery, collected items on the map) without finishing it first.
+Screens: extras-randomizer (Unlocks)
+Depends: S-037
+Notes: data.sav (save_stats): header "[AM2R UnlockData V7.0]", then ds_lists unlocks (50), gallery (50), stats (100), achievements (100); the score screen sets unlock[0/1/2] by difficulty (item collection on the map) and gallery[0…2] by time. extras.sav (save_stats2): one ds_list of 20, value 0 = mod_fusion_unlocked (Fusion difficulty, FusionMSRsuit option). The game sets mod_gamebeaten (New Game+ and Random Game+ in oGameSelMenu, the IGT option) whenever extras.sav loads. Same cipher as the slots. Checked in the engine: a fresh save folder reads beaten=1 fusion=1 unlock=111 gallery=111.
+UX:
+- Flow: Extras > Unlocks: "Game Unlocks" with what it opens, and Unlock Everything; then "Unlocked".
+- States: existing saves are backed up first ("before unlocks"); a profile with no saves gets the two files; Rosetta profiles don't show it (own save folder); while playing: off, like the rest of the page.
+Acceptance:
+- [unit] Unlocking makes both files with 50/50/100/100 and 20 values, keeps stats and achievements, and refuses a file it can't read.
+- [self] Works on a profile with no saves; backs up existing saves first.
+- [snap] Extras shows Unlocks between Game Options and Randomizer.
+- [manual] Random Game+ shows on an empty slot, and Fusion in the difficulty choice.
+Status: done (2026-11-18), [manual] waits on the owner

@@ -122,6 +122,7 @@ struct GameSettingsView<Header: View>: View {
                     statusFooter
                 }
                 .disabled(!canWrite)
+                UnlocksSection(profile: profile)
                 RandomizerSection(profile: profile)
                 UpgradesSection(profile: profile)
                 ScreenshotsSection(profile: profile)

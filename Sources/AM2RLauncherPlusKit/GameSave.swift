@@ -173,7 +173,7 @@ public struct GameSave: Equatable, Sendable {
     }
 
     static func sample(gameID: UInt32, inventory: [DSList.Value]?, randomizer: [DSList.Value] = [.int32(7)], seedLine: String = "12345") -> Data {
-        let header = String(String.UnicodeScalarView(rc4(Array(Self.header.utf8), key: "HEADER_KEY").map { Unicode.Scalar($0) }))
+        let header = encodedHeader(Self.header)
         func list(_ values: [DSList.Value]) -> String {
             var list = DSList(hex: "2F01000000000000")!
             list.values = values
@@ -255,6 +255,11 @@ public struct GameSave: Equatable, Sendable {
         guard let text = String(data: line, encoding: .utf8) else { return nil }
         let bytes = text.unicodeScalars.map { UInt8(truncatingIfNeeded: $0.value) }
         return String(bytes: rc4(bytes, key: "HEADER_KEY"), encoding: .isoLatin1)
+    }
+
+    /// The header line as the game writes it: rc4(header), one character per byte value.
+    static func encodedHeader(_ header: String) -> String {
+        String(String.UnicodeScalarView(rc4(Array(header.utf8), key: "HEADER_KEY").map { Unicode.Scalar($0) }))
     }
 
     static func rc4(_ input: [UInt8], key: String) -> [UInt8] {
