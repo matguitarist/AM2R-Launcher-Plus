@@ -262,16 +262,36 @@ struct EngineSection: View {
     private var canUseRosetta: Bool { model.rosettaInstalled && model.source?.hasWindowsGame == true }
 
     var body: some View {
-        if profile.isMod {
-            Section {
-                LabeledContent("Engine", value: Engine.native.title)
-            } header: {
-                Text("Engine")
-            } footer: {
-                Text("Mods play on the native engine.")
+        Group {
+            if profile.isMod {
+                Section {
+                    LabeledContent("Engine", value: Engine.native.title)
+                    coverageNote
+                } header: {
+                    Text("Engine")
+                } footer: {
+                    Text("Mods play on the native engine.")
+                }
+            } else {
+                choices
             }
-        } else {
-            choices
+        }
+        .task(id: profile.uuid) { await model.checkEngineCoverage(profile) }
+    }
+
+    /// What the game calls that the native engine lacks (S-042): those parts may not work natively.
+    @ViewBuilder private var coverageNote: some View {
+        let missing = profile.missingBuiltins
+        if profile.engine == .native, !missing.isEmpty {
+            Label {
+                Text(profile.isMod
+                     ? "\(profile.name) uses \(missing.count == 1 ? "a game function" : "\(missing.count) game functions") the native engine doesn't have yet, so parts of it may not work: \(missing.joined(separator: ", "))."
+                     : "This game uses \(missing.count == 1 ? "a function" : "\(missing.count) functions") the native engine doesn't have yet: \(missing.joined(separator: ", ")). If something doesn't work, try Rosetta.")
+                    .textSelection(.enabled)
+            } icon: {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .symbolRenderingMode(.multicolor)
+            }
         }
     }
 
@@ -286,6 +306,7 @@ struct EngineSection: View {
             }
             .help("Native runs AM2R on Apple silicon. Rosetta runs the official game runner, for when a profile misbehaves.")
             .disabled(model.rosettaBuild != nil)
+            coverageNote
             if model.rosettaBuild == profile.uuid {
                 HStack(spacing: Space.sm) {
                     ProgressView().controlSize(.small)

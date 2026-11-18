@@ -408,6 +408,21 @@ Acceptance:
 - [manual] F12 in the game, then the shot shows on Extras after quitting (engine check: F12 saves a 320 × 240 PNG).
 Status: done (2026-11-18)
 
+### S-042 Know when a mod needs what the engine lacks
+As a mod player, I see before I play that a mod calls game functions the native engine doesn't have, so a broken room or effect doesn't surprise me.
+Screens: play-mod, play-mod-full
+Depends: S-033, engine --print-unknown-functions
+Notes: The bundled engine lists them in a fraction of a second (`--headless --print-unknown-functions game.ios`, nothing runs). Eight are missing on purpose (Android touch, show_debug_overlay; tools/engine-check/known-missing.txt) and left out. The result is kept on the profile with the engine's Engine/VERSION stamp, so an engine update checks again. Checked when the Play page opens a profile, mods and Community Updates alike.
+UX:
+- Flow: Play: under Play, "Parts of this game may not work on the native engine. See Engine below."; Engine section: the names, selectable. Community Updates on Native adds "If something doesn't work, try Rosetta."
+- States: nothing missing, or Rosetta chosen: no note; the engine can't read the game: no note, checked again next time (logged).
+Acceptance:
+- [unit] The report gives the names minus the harmless eight; no report is a failure.
+- [self] The bundled engine has a stamp; an unreadable game stays unchecked; a checked game isn't checked again with the same build.
+- [snap] A mod with two missing functions shows the note under Play and in Engine.
+- [manual] Install a mod that calls a missing function and see its name on Play.
+Status: done (2026-11-18)
+
 ## Later
 - Metal renderer and MetalFX upscaling in Butterscotch (a4f648ca)
 - Our own game patch (UndertaleModLib, .NET on the developer Mac) for tweaks Community Updates lacks: shorter item fanfare, faster save stations

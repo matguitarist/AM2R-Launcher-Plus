@@ -105,6 +105,16 @@ enum Snapshot {
                     try? await Task.sleep(for: .seconds(0.8))
                     capture(to: "\(dir)/play-mod-\(mode).png")
                 }
+                // S-042: the whole page, down to the Engine section's note, in a tall window.
+                if only?.contains("play-mod-full") ?? true, let window = NSApp.windows.first(where: { $0.canBecomeMain && !$0.isSheet }) {
+                    let frame = window.frame
+                    let tall = min(1500, (window.screen ?? NSScreen.main)?.visibleFrame.height ?? frame.height)
+                    window.setFrame(NSRect(x: frame.minX, y: frame.maxY - tall, width: frame.width, height: tall), display: true)
+                    NSApp.appearance = NSAppearance(named: .aqua)
+                    try? await Task.sleep(for: .seconds(0.8))
+                    capture(to: "\(dir)/play-mod-full-light.png")
+                    window.setFrame(frame, display: true)
+                }
                 model.selection = saved
             }
             // S-040: the whole Extras page, Randomizer and Save Slots included, in a window tall enough to hold it.

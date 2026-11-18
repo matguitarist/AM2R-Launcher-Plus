@@ -28,6 +28,9 @@ enum SeedData {
         mod.installedAt = Date.now.addingTimeInterval(-7 * 86_400)
         mod.lastPlayedAt = Date.now.addingTimeInterval(-2 * 86_400)
         mod.playTime = 45 * 60
+        // S-042: functions the engine lacks, as checked with the bundled engine.
+        mod.missingBuiltins = ["d3d_model_load", "physics_joint_rope_create"]
+        mod.builtinsCheckedWith = AppModel.engineStamp
         mod.notes = "A sample mod with a longer description, the way mods describe themselves in their profile.xml, so the Mods page shows two lines of it."
         context.insert(mod)
         // The community mod list, offline.

@@ -203,6 +203,13 @@ extension PlayPage {
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
+            // S-042: the full list is in the Engine section below.
+            if profile.engine == .native, !profile.missingBuiltins.isEmpty {
+                Label("Parts of this game may not work on the native engine. See Engine below.", systemImage: "exclamationmark.triangle.fill")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .symbolRenderingMode(.multicolor)
+            }
             if let failure = model.lastGameFailure, failure.profile == profile.uuid, !model.isPlaying {
                 FailureBanner()
             }

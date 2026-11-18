@@ -240,6 +240,21 @@ enum SelfTest {
                 model.delete(shooter, keepSaves: false)
             }
 
+            // S-042: the bundled engine is asked which functions a game calls that it lacks, once per engine build.
+            do {
+                let checked = model.addProfile(name: "Coverage", version: "1.5.5")
+                try? FileManager.default.createDirectory(at: checked.folder, withIntermediateDirectories: true)
+                try? Data("not a game".utf8).write(to: checked.folder.appending(path: "game.ios"))
+                check("the app has an engine build stamp", !AppModel.engineStamp.isEmpty)
+                await model.checkEngineCoverage(checked)
+                check("a game the engine can't read stays unchecked", checked.builtinsCheckedWith.isEmpty && checked.missingBuiltins.isEmpty)
+                checked.missingBuiltins = ["d3d_model_load"]
+                checked.builtinsCheckedWith = AppModel.engineStamp
+                await model.checkEngineCoverage(checked)
+                check("a game checked with this engine build isn't checked again", checked.missingBuiltins == ["d3d_model_load"])
+                model.delete(checked, keepSaves: false)
+            }
+
             // S-020: the banner shows only for a profile built from older patch data.
             do {
                 let old = model.addProfile(name: "Old", version: "1.5.5")

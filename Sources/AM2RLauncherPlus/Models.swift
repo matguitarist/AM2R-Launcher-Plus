@@ -66,6 +66,10 @@ final class Profile {
     var author: String = ""
     /// The mod's own description (ProfileNotes in its profile.xml).
     var notes: String = ""
+    /// GameMaker functions the game calls that the native engine lacks, harmless ones left out (S-042).
+    var missingBuiltins: [String] = []
+    /// The engine build (Engine/VERSION) `missingBuiltins` was checked with; another build checks again.
+    var builtinsCheckedWith: String = ""
 
     var displayFilter: DisplayFilter {
         get { DisplayFilter(rawValue: displayFilterRaw) ?? .none }
