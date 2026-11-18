@@ -631,6 +631,19 @@ index f82a351..985edbe 100644
      glVtable.gpuGetBlendFactors = glGpuGetBlendFactors;
      glVtable.gpuGetBlendMode = glGpuGetBlendMode;
      glVtable.gpuSetBlendMode = glGpuSetBlendMode;
+diff --git a/src/instance.h b/src/instance.h
+index 1be67ac..413ca3e 100644
+--- a/src/instance.h
++++ b/src/instance.h
+@@ -44,6 +44,8 @@ struct Instance {
+     // Used to track which alarms are set without looping through the entire alarm array
+     uint16_t activeAlarmMask;
+     bool cleanupEventFired;
++    // The collision pass this instance was destroyed in (0 = not during one). GMS 1.x keeps it colliding until the pass ends.
++    uint32_t destroyedInCollisionPass;
+     bool sequenceControlled;
+     int32_t maskIndex; // collision mask sprite override (-1 = use spriteIndex)
+     int32_t* collisionCells; // Used to track where we are
 diff --git a/src/loop.c b/src/loop.c
 index 42ef176..ba7d9c3 100644
 --- a/src/loop.c
@@ -711,10 +724,18 @@ index ae09f7d..284489e 100644
      int32_t (*gpuGetBlendMode)(Renderer* renderer);
      void (*gpuSetBlendMode)(Renderer* renderer, int32_t mode);
 diff --git a/src/runner.c b/src/runner.c
-index c5f3f74..2dc13dd 100644
+index c5f3f74..8ae02d8 100644
 --- a/src/runner.c
 +++ b/src/runner.c
-@@ -2689,7 +2689,7 @@ Runner* Runner_create(DataWin* dataWin, VMContext* vm, Renderer* renderer, FileS
+@@ -2615,6 +2615,7 @@ Runner* Runner_create(DataWin* dataWin, VMContext* vm, Renderer* renderer, FileS
+     // Collision compatibility mode is "enabled" for all pre-GM 2022.1 games AND for any post-GM 2022.1 games that have the bit 27 set
+     bool isVersionAtLeastGM_2022_1 = DataWin_isVersionAtLeast(dataWin, 2022, 1, 0, 0);
+     runner->collisionCompatibilityMode = !isVersionAtLeastGM_2022_1 || ((dataWin->optn.info >> 27) & 1) != 0;
++    runner->destroyedStayInCollisionPass = !DataWin_isVersionAtLeast(dataWin, 2, 0, 0, 0);
+ 
+     // Build the event dispatch acceleration tables.
+     EventSlotMap_build(&runner->eventSlotMap, dataWin);
+@@ -2689,7 +2690,7 @@ Runner* Runner_create(DataWin* dataWin, VMContext* vm, Renderer* renderer, FileS
      repeat(shlen(vm->builtinMap), i) {
          bool isRegistered = shgeti(vm->codeIndexByName, vm->builtinMap[i].key) != -1;
          if (isRegistered) {
@@ -723,7 +744,56 @@ index c5f3f74..2dc13dd 100644
          }
      }
      }
-@@ -4119,7 +4119,9 @@ static void persistRoomState(Runner* runner, int32_t roomIndex) {
+@@ -2930,6 +2931,7 @@ void Runner_destroyInstance(MAYBE_UNUSED Runner* runner, Instance* inst, bool ru
+     if (inst->destroyed)
+         return;
+     inst->destroyed = true;
++    inst->destroyedInCollisionPass = runner->collisionPass;
+     if (runDestroyEvent)
+         Runner_executeEvent(runner, inst, EVENT_DESTROY, 0);
+     Runner_executeCleanupEvent(runner, inst);
+@@ -3708,7 +3710,22 @@ static int compareIntsAscending(const void* a, const void* b) {
+     return (ia > ib) - (ia < ib);
+ }
+ 
++// Whether an instance still takes part in this collision pass: active, or (GMS 1.x) destroyed earlier in this same pass.
++static bool collidesInThisPass(Runner* runner, Instance* inst) {
++    if (inst->active) return true;
++    return runner->destroyedStayInCollisionPass && inst->destroyed && runner->collisionPass != 0 && inst->destroyedInCollisionPass == runner->collisionPass;
++}
++
++static void dispatchCollisionEventsInPass(Runner* runner);
++
+ static void dispatchCollisionEvents(Runner* runner) {
++    if (++runner->collisionPassCounter == 0) runner->collisionPassCounter = 1;
++    runner->collisionPass = runner->collisionPassCounter;
++    dispatchCollisionEventsInPass(runner);
++    runner->collisionPass = 0;
++}
++
++static void dispatchCollisionEventsInPass(Runner* runner) {
+     DataWin* dataWin = runner->dataWin;
+     // Iterate only the objects that have any collision event in their parent chain.
+     int32_t* allSelfObjects = (runner->objectsWithAnyEventOfType != nullptr) ? runner->objectsWithAnyEventOfType[EVENT_COLLISION] : nullptr;
+@@ -3734,7 +3751,7 @@ static void dispatchCollisionEvents(Runner* runner) {
+ 
+         repeat(selfBucketCount, si) {
+             Instance* self = runner->instanceSnapshots[selfSnapBase + si];
+-            if (!self->active || self->physicsBody) continue;
++            if (!collidesInThisPass(runner, self) || self->physicsBody) continue;
+ 
+             InstanceBBox bboxSelf;
+             Sprite* sprSelf;
+@@ -3757,7 +3774,7 @@ static void dispatchCollisionEvents(Runner* runner) {
+ 
+                 for (int32_t snapIdx = snapBase; snapEnd > snapIdx; snapIdx++) {
+                     Instance* other = runner->instanceSnapshots[snapIdx];
+-                    if (!other->active) continue;
++                    if (!collidesInThisPass(runner, other)) continue;
+                     if (other == self) continue;
+ 
+                     if (mostSpecificCollisionTarget(runner, self, other) != targetObjIndex)
+@@ -4119,7 +4136,9 @@ static void persistRoomState(Runner* runner, int32_t roomIndex) {
          Instance* inst = runner->instances[i];
          if (inst->persistent) {
              arrput(keptInstances, inst);
@@ -734,7 +804,7 @@ index c5f3f74..2dc13dd 100644
              arrput(state->instances, inst);
          } else {
              hmdel(runner->instancesById, inst->instanceId);
-@@ -5405,3 +5407,18 @@ void Runner_free(Runner* runner) {
+@@ -5405,3 +5424,18 @@ void Runner_free(Runner* runner) {
          free(runner->windowTitle);
      free(runner);
  }
@@ -754,7 +824,7 @@ index c5f3f74..2dc13dd 100644
 +    logInfo("Runner: display_reset applied, surfaces lost\n");
 +}
 diff --git a/src/runner.h b/src/runner.h
-index b219856..edb565c 100644
+index b219856..ebba704 100644
 --- a/src/runner.h
 +++ b/src/runner.h
 @@ -756,10 +756,16 @@ struct Runner {
@@ -774,7 +844,21 @@ index b219856..edb565c 100644
      bool (*getWindowFullscreen)(void);
      void (*setWindowFullscreen)(bool fullscreen);
      void (*setCursor)(int32_t cursorType);
-@@ -929,6 +935,7 @@ struct Runner {
+@@ -902,6 +908,13 @@ struct Runner {
+     // GMS legacy (pre 2022.1) collision behavior: AABB overlap treats touching edges as overlap.
+     bool collisionCompatibilityMode;
+ 
++    // GMS 1.x: an instance destroyed during the collision pass still takes part in the rest of that pass,
++    // so the other side's collision event still fires (AM2R: a missile explodes in its own oMAlpha event,
++    // then oMAlpha's oMissile event deals the damage). collisionPass counts passes; 0 = not in one.
++    bool destroyedStayInCollisionPass;
++    uint32_t collisionPassCounter;
++    uint32_t collisionPass;
++
+     // GameMaker surface "stack".
+     int32_t surfaceStack[MAX_SURFACES];
+ 
+@@ -929,6 +942,7 @@ struct Runner {
  
  const char* Runner_getEventName(int32_t eventType, int32_t eventSubtype);
  void Runner_reset(Runner* runner);

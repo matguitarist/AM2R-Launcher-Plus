@@ -2,7 +2,8 @@
 # Checks the patched Butterscotch engine against a Community Updates profile before you ship it:
 #   1. builtins: nothing the game calls is missing, apart from the known Android and debug ones;
 #   2. in-game checks: tools/engine-check/checks.gml runs inside a scratch copy of the game;
-#   3. playthrough: title, new game, intro skip, F12, a few steps, compared with reference frames.
+#   3. Metroid fight: a missile fired into an Alpha Metroid hurts it (tools/engine-check/metroid.gml);
+#   4. playthrough: title, new game, intro skip, F12, a few steps, compared with reference frames.
 #
 #   tools/engine-check.sh <profile folder name (UUID)> [--update-references]
 #
@@ -49,7 +50,23 @@ else
   echo "SKIP no UndertaleModCli at $cli"
 fi
 
-echo "== 3. Playthrough"
+echo "== 3. Metroid fight"
+if [[ -f "$cli" ]]; then
+  cp -R "$profile" "$out/metroid"
+  EVENT="oCharacter:DrawGUI" GML="$here/engine-check/metroid.gml" dotnet "$cli" load "$out/metroid/game.ios" \
+    -s "$here/engine-check/inject.csx" -o "$out/metroid/game.ios" -f </dev/null > "$out/metroid-inject.log" 2>&1
+  grep -q COMPILED "$out/metroid-inject.log" || { cat "$out/metroid-inject.log"; fail "metroid.gml didn't compile"; }
+  mkdir -p "$out/metroid-saves"
+  (cd "$out/metroid" && "$engine" --headless --save-folder "$out/metroid-saves" --seed 1 --playback-inputs "$here/engine-check/play.json" \
+    --exit-at-frame 3300 game.ios > "$out/metroid.log" 2>&1) || fail "the engine stopped during the Metroid fight (see $out/metroid.log)"
+  sed -n 's/^Game: CHECK //p' "$out/metroid.log"
+  passes=$(grep -c "^Game: CHECK PASS" "$out/metroid.log" || true)
+  (( passes == $(grep -c '"CHECK ' "$here/engine-check/metroid.gml") )) || fail "only $passes Metroid fight checks passed"
+else
+  echo "SKIP no UndertaleModCli at $cli"
+fi
+
+echo "== 4. Playthrough"
 mkdir -p "$out/play-saves"
 shots=(); for f in $frames; do shots+=(--screenshot-at-frame $f); done
 (cd "$profile" && "$engine" --save-folder "$out/play-saves" --seed 1 --playback-inputs "$here/engine-check/play.json" \
