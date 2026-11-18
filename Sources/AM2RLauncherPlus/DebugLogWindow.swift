@@ -5,9 +5,15 @@ import SwiftUI
 
 /// What the Log page shows.
 enum DebugLogSource: String, CaseIterable, Identifiable {
-    case launcher, game
+    case launcher, game, rooms
     var id: String { rawValue }
-    var title: String { self == .launcher ? "Launcher" : "Game" }
+    var title: String {
+        switch self {
+        case .launcher: "Launcher"
+        case .game: "Game"
+        case .rooms: "Rooms"
+        }
+    }
 
     /// Debug lines start hidden, in both logs.
     static let startLevels: Set<LogLevel> = Set(LogLevel.allCases).subtracting([.trace, .debug])
@@ -19,6 +25,10 @@ struct DebugLogPage: View {
     @Environment(AppModel.self) private var model
     /// The game log shown: the current profile's newest. A new run starts a new file, and the viewer moves to it.
     @State private var game: (key: String, viewer: LogViewerModel)?
+    /// The current profile's am2r_log.txt (S-043), and whether its config.ini has WriteLog on.
+    @State private var rooms: (profile: UUID, viewer: LogViewerModel)?
+    @State private var roomLogOn = false
+    @State private var roomLogError: String?
 
     private var source: DebugLogSource { model.debugLogSource }
 
@@ -33,6 +43,12 @@ struct DebugLogPage: View {
                 } else {
                     noGameLog
                 }
+            case .rooms:
+                if let viewer = rooms?.viewer, roomLogOn {
+                    LogViewer(model: viewer, options: roomOptions)
+                } else {
+                    roomLogOff
+                }
             }
         }
         .navigationTitle("Log")
@@ -43,10 +59,11 @@ struct DebugLogPage: View {
                     ForEach(DebugLogSource.allCases) { Text($0.title).tag($0) }
                 }
                 .pickerStyle(.segmented)
-                .help("Show what the launcher did, or what the game wrote")
+                .help("Show what the launcher did, what the game wrote, or the rooms you went through")
             }
         }
         .task(id: model.currentProfile?.uuid) { await followNewestGameLog() }
+        .task(id: "\(model.currentProfile?.uuid.uuidString ?? "")-\(source.rawValue)") { if source == .rooms { loadRoomLog() } }
         .noInitialFocus()
     }
 
@@ -54,6 +71,7 @@ struct DebugLogPage: View {
         switch source {
         case .launcher: "launcher.log"
         case .game: [model.currentProfile?.name, game?.viewer.fileURL?.lastPathComponent].compactMap { $0 }.joined(separator: " · ")
+        case .rooms: [model.currentProfile?.name, "am2r_log.txt"].compactMap { $0 }.joined(separator: " · ")
         }
     }
 
@@ -114,6 +132,75 @@ struct DebugLogPage: View {
                 }
             }
             try? await Task.sleep(for: .seconds(1))
+        }
+    }
+
+    // MARK: Rooms
+
+    private var roomOptions: LogViewerOptions {
+        LogViewerOptions(
+            emptyTitle: String(localized: "No Rooms Yet"),
+            emptyMessage: model.currentProfile.map { String(localized: "Play \($0.name); each room you enter shows here.") } ?? "",
+            shareActions: [
+                .init(String(localized: "Show am2r_log.txt in Finder")) { _ in
+                    guard let profile = model.currentProfile else { return }
+                    let file = RoomLog.file(in: GameRunner.saveFolder(for: profile))
+                    if FileManager.default.fileExists(atPath: file.path) {
+                        NSWorkspace.shared.activateFileViewerSelecting([file])
+                    } else {
+                        NSWorkspace.shared.open(GameRunner.saveFolder(for: profile))
+                    }
+                },
+                .init(String(localized: "Turn Off Room Log")) { _ in setRoomLog(false) },
+            ],
+            sourceColor: { $0 == "Rooms" ? .accentColor : $0 == "Map" ? .teal : .secondary }
+        )
+    }
+
+    /// Off: what the room log is, and the switch. The game reads WriteLog when it starts.
+    private var roomLogOff: some View {
+        ContentUnavailableView {
+            Label("Room Log Is Off", systemImage: "map")
+        } description: {
+            Text(model.currentProfile == nil
+                 ? "Install a profile first."
+                 : "The game can list each room you enter, with the time. Turn it on, then play. Useful to tell where a problem happened.")
+            if let roomLogError { Text(roomLogError).foregroundStyle(.red) }
+        } actions: {
+            if model.currentProfile != nil {
+                Button("Turn On Room Log") { setRoomLog(true) }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(model.isPlaying)
+                    .help(model.isPlaying ? "Quit the game first; it rewrites its settings when it closes" : "Sets WriteLog in the profile's config.ini")
+            }
+        }
+    }
+
+    private func loadRoomLog() {
+        rooms = nil
+        roomLogError = nil
+        guard let profile = model.currentProfile else { roomLogOn = false; return }
+        let saves = GameRunner.saveFolder(for: profile)
+        roomLogOn = RoomLog.isOn(saves: saves)
+        let names = GameData.roomNames(of: profile.folder.appending(path: "game.ios"))
+        let viewer = LogViewerModel(file: LogFileSource(
+            files: [.init(String(localized: "Room Log"), url: RoomLog.file(in: saves))],
+            parser: RoomLog.parser(roomNames: names), maxBytes: 2 << 20))
+        viewer.filter = LogFilter(levels: DebugLogSource.startLevels)
+        viewer.defaultFilter = LogFilter(levels: DebugLogSource.startLevels)
+        rooms = (profile.uuid, viewer)
+    }
+
+    private func setRoomLog(_ on: Bool) {
+        guard let profile = model.currentProfile else { return }
+        do {
+            try RoomLog.set(on, saves: GameRunner.saveFolder(for: profile))
+            roomLogOn = on
+            roomLogError = nil
+            log(.info, "Log", "\(profile.name): room log \(on ? "on" : "off")")
+        } catch {
+            roomLogError = String(localized: "Unable to change config.ini: \(error.localizedDescription)")
+            log(.error, "Log", "Room log of \(profile.name): \(error)")
         }
     }
 

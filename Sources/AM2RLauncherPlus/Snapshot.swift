@@ -230,8 +230,12 @@ enum Snapshot {
                 }
                 model.lastGameFailure = nil
             }
-            // The Log page with sample entries: log-launcher and log-game.
-            if let profile = model.currentProfile, only?.contains("log-launcher") ?? true || only?.contains("log-game") ?? true {
+            // The Log page with sample entries: log-launcher, log-game and log-rooms (S-043).
+            if let profile = model.currentProfile, only?.contains("log-launcher") ?? true || only?.contains("log-game") ?? true
+                || only?.contains("log-rooms") ?? true || only?.contains("log-rooms-off") ?? true {
+                let saves = GameRunner.saveFolder(for: profile)
+                try? RoomLog.set(true, saves: saves)
+                try? sampleRoomLog.write(to: RoomLog.file(in: saves), atomically: true, encoding: .utf8)
                 for (level, source, message) in sampleEvents { log(level, source, message) }
                 let logs = GameRunner.logFolder(for: profile)
                 try? FileManager.default.createDirectory(at: logs, withIntermediateDirectories: true)
@@ -243,6 +247,17 @@ enum Snapshot {
                         NSApp.appearance = NSAppearance(named: mode == "light" ? .aqua : .darkAqua)
                         try? await Task.sleep(for: .seconds(1.5))
                         capture(to: "\(dir)/log-\(source.rawValue)-\(mode).png")
+                    }
+                }
+                if only?.contains("log-rooms-off") ?? true {
+                    try? RoomLog.set(false, saves: saves)
+                    model.debugLogSource = .game
+                    try? await Task.sleep(for: .seconds(0.3))
+                    model.debugLogSource = .rooms
+                    for mode in ["light", "dark"] {
+                        NSApp.appearance = NSAppearance(named: mode == "light" ? .aqua : .darkAqua)
+                        try? await Task.sleep(for: .seconds(1))
+                        capture(to: "\(dir)/log-rooms-off-\(mode).png")
                     }
                 }
                 model.debugLogSource = .launcher
@@ -301,6 +316,24 @@ enum Snapshot {
         Room: rm_a0h01
         ERROR: surface_save is not implemented
         Fatal error in action number 1 of Draw Event for object oControl
+        """
+
+    /// A short trip from the title screen into Area 1, as the game writes am2r_log.txt (room numbers match SeedData's game).
+    static let sampleRoomLog = """
+        November 18th 2026, 14:02.51: Options Loaded
+        November 18th 2026, 14:02.51: Loading Room 0
+        November 18th 2026, 14:02.53: UnLoading Room 0
+        November 18th 2026, 14:02.53: Loading Room 1
+        November 18th 2026, 14:03.20: UnLoading Room 1
+        November 18th 2026, 14:03.20: Reset map start
+        November 18th 2026, 14:03.20: Resetting 3,4
+        November 18th 2026, 14:03.20: Reset map end
+        November 18th 2026, 14:03.21: Loading Room 2
+        November 18th 2026, 14:04.07: UnLoading Room 2
+        November 18th 2026, 14:04.07: Loading Room 3
+        November 18th 2026, 14:05.12: UnLoading Room 3
+        November 18th 2026, 14:05.12: Loading Room 4
+
         """
 
     /// Captures the real window with screencapture, so glass, sidebars, and

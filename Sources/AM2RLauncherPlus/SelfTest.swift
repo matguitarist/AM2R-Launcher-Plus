@@ -255,6 +255,22 @@ enum SelfTest {
                 model.delete(checked, keepSaves: false)
             }
 
+            // S-043: the game's room log, turned on in config.ini and read with the game's room names.
+            do {
+                let tracer = model.addProfile(name: "Rooms", version: "1.5.5")
+                let saves = GameRunner.saveFolder(for: tracer)
+                try? FileManager.default.createDirectory(at: tracer.folder, withIntermediateDirectories: true)
+                try? GameData.sample(roomNames: ["initroom", "titleroom", "rm_a0h01"], gameID: 971_912_648)
+                    .write(to: tracer.folder.appending(path: "game.ios"))
+                check("the room log starts off", !RoomLog.isOn(saves: saves))
+                try? RoomLog.set(true, saves: saves)
+                check("Turn On Room Log sets WriteLog in config.ini", RoomLog.isOn(saves: saves))
+                let names = GameData.roomNames(of: tracer.folder.appending(path: "game.ios"))
+                check("a room the game loads shows by name",
+                      RoomLog.line("November 18th 2026, 09:59.10: Loading Room 2", roomNames: names)?.message == "Entered rm_a0h01 (2)")
+                model.delete(tracer, keepSaves: false)
+            }
+
             // S-020: the banner shows only for a profile built from older patch data.
             do {
                 let old = model.addProfile(name: "Old", version: "1.5.5")

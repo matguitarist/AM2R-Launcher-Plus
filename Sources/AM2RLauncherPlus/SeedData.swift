@@ -66,7 +66,8 @@ enum SeedData {
             .write(to: RandomizerOptions.file(in: current.folder), atomically: true, encoding: .utf8)
         let gameID: UInt32 = 971_912_648, saves = GameRunner.saveFolder(for: current)
         try? FileManager.default.createDirectory(at: saves, withIntermediateDirectories: true)
-        try? GameSave.sampleGameData(gameID: gameID).write(to: current.folder.appending(path: "game.ios"))
+        // S-043: room names for the Rooms log, as the game numbers them.
+        try? GameData.sample(roomNames: ["initroom", "titleroom", "rm_a0h01", "rm_a0h02", "rm_a0h03"], gameID: gameID).write(to: current.folder.appending(path: "game.ios"))
         try? GameSave.sample(gameID: gameID).write(to: saves.appending(path: "save1"))
         try? GameSave.sampleRandomized(gameID: gameID, gameMode: 4, seed: "3390671227").write(to: saves.appending(path: "save2"))
         // S-041: three F12 screenshots, cut from the header's in-game picture at the game's size.

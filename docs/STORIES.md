@@ -423,6 +423,21 @@ Acceptance:
 - [manual] Install a mod that calls a missing function and see its name on Play.
 Status: done (2026-11-18)
 
+### S-043 See the rooms I went through
+As the player, or someone helping me with a bug, I turn on the game's room log and see, live, each room I entered and when, by name.
+Screens: log-rooms, log-rooms-off
+Depends: S-031 (Log page)
+Notes: AM2R's writelog appends to am2r_log.txt in its save folder when config.ini [Debug] WriteLog is 1 (load_gameoptions reads it; save_gameoptions keeps it): "Options Loaded", "Loading Room N", "UnLoading Room N", "Reset map …". Each line starts with date_datetime_string ("November 18th 2026, 09:59.10: "). Room numbers become names from the game data's ROOM chunk (395 rooms in 1.5.5). Checked with the engine: WriteLog=1 in a scratch save folder wrote the expected lines.
+UX:
+- Flow: Log > Rooms: "Entered rm_a0h01 (2)" under Rooms, map resets under Map; leaving a room and each map cell are Debug, hidden at first. Share menu: Show am2r_log.txt in Finder, Turn Off Room Log.
+- States: off: "Room Log Is Off" with Turn On Room Log (off while playing: the game rewrites config.ini when it closes); on, nothing yet: "No Rooms Yet".
+Acceptance:
+- [unit] Room names come from ROOM; lines read with time, source and level; WriteLog is set in [Debug], keeping the rest of config.ini and its line endings.
+- [self] The log starts off, turns on in config.ini, and names a loaded room.
+- [snap] Rooms shows a sample trip by room name; off shows the switch.
+- [manual] Turn it on, play, and see rooms appear live.
+Status: done (2026-11-18)
+
 ## Later
 - Metal renderer and MetalFX upscaling in Butterscotch (a4f648ca)
 - Our own game patch (UndertaleModLib, .NET on the developer Mac) for tweaks Community Updates lacks: shorter item fanfare, faster save stations
