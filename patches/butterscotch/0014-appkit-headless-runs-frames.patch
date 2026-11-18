@@ -1,0 +1,28 @@
+--- a/src/backends/appkit.m
++++ b/src/backends/appkit.m
+@@ -19,6 +19,8 @@
+ 
+ static Runner *g_runner;
+ static NSWindow *window = nil;
++// Headless runs keep the window hidden; a hidden window must not read as a closed one.
++static bool g_headless = false;
+ static NSOpenGLContext *glContext = nil;
+ static NSOpenGLView *glView = nil;
+ 
+@@ -692,6 +694,7 @@
+ @end
+ 
+ bool platformInit(int32_t reqW, int32_t reqH, const char *title, bool headless, bool fullscreen) {
++    g_headless = headless;
+     // Create application
+     [NSApplication sharedApplication];
+     [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+@@ -1174,7 +1177,7 @@
+ 
+ bool platformHandleEvents(void)
+ {
+-    if (![window isVisible])
++    if (!g_headless && ![window isVisible])
+         return true;
+ 
+     @autoreleasepool {

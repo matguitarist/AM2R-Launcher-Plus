@@ -12,7 +12,7 @@ index 05f006a..5d07749 100644
          if(NOT ENABLE_NOOP_RENDERER)
              message(FATAL_ERROR "BACKEND=noop requires ENABLE_NOOP_RENDERER=ON")
 diff --git a/src/backends/appkit.m b/src/backends/appkit.m
-index 9623eb1..7ac60c9 100644
+index 9623eb1..e8ffbc6 100644
 --- a/src/backends/appkit.m
 +++ b/src/backends/appkit.m
 @@ -4,7 +4,12 @@
@@ -28,7 +28,14 @@ index 9623eb1..7ac60c9 100644
  
  #include "common.h"
  #include "input_recording.h"
-@@ -19,6 +24,47 @@
+@@ -14,11 +19,54 @@
+ 
+ static Runner *g_runner;
+ static NSWindow *window = nil;
++// Headless runs keep the window hidden; a hidden window must not read as a closed one.
++static bool g_headless = false;
+ static NSOpenGLContext *glContext = nil;
+ static NSOpenGLView *glView = nil;
  
  #define USE_PRIVATE_API 0
  
@@ -76,7 +83,7 @@ index 9623eb1..7ac60c9 100644
  enum {
      IDX_LT = 6,
      IDX_RT = 7,
-@@ -88,6 +134,14 @@ static void appkitMapControllerToSlot(GCController *controller, GamepadSlot *slo
+@@ -88,6 +136,14 @@ static void appkitMapControllerToSlot(GCController *controller, GamepadSlot *slo
          slot->axisValue[2] = extended.rightThumbstick.xAxis.value;
          slot->axisValue[3] = -extended.rightThumbstick.yAxis.value;
  
@@ -91,7 +98,7 @@ index 9623eb1..7ac60c9 100644
          if (extended.leftThumbstickButton) {
              slot->buttonDown[10] = extended.leftThumbstickButton.pressed;
              slot->buttonValue[10] = extended.leftThumbstickButton.value;
-@@ -425,6 +479,25 @@ static bool platformGetWindowFullscreen(void) {
+@@ -425,6 +481,25 @@ static bool platformGetWindowFullscreen(void) {
      return ([window styleMask] & NSWindowStyleMaskFullScreen) != 0;
  }
  
@@ -117,7 +124,15 @@ index 9623eb1..7ac60c9 100644
  static void platformSetWindowFullscreen(bool fullscreen) {
      if (fullscreen == platformGetWindowFullscreen()) return;
      [window toggleFullScreen:nil];
-@@ -702,6 +775,7 @@ bool platformInit(int32_t reqW, int32_t reqH, const char *title, bool headless,
+@@ -619,6 +694,7 @@ - (void)setupMenu {
+ @end
+ 
+ bool platformInit(int32_t reqW, int32_t reqH, const char *title, bool headless, bool fullscreen) {
++    g_headless = headless;
+     // Create application
+     [NSApplication sharedApplication];
+     [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+@@ -702,6 +778,7 @@ bool platformInit(int32_t reqW, int32_t reqH, const char *title, bool headless,
  }
  
  void platformExit(void) {
@@ -125,7 +140,7 @@ index 9623eb1..7ac60c9 100644
      if (@available(macOS 10.15, *)) {
          [GCController stopWirelessControllerDiscovery];
      }
-@@ -772,19 +846,325 @@ static bool windowIsFocused(void) {
+@@ -772,19 +849,325 @@ static bool windowIsFocused(void) {
      return [window isKeyWindow];
  }
  
@@ -451,7 +466,16 @@ index 9623eb1..7ac60c9 100644
      [glContext flushBuffer];
  }
  
-@@ -828,6 +1208,7 @@ bool platformHandleEvents(void)
+@@ -794,7 +1177,7 @@ void platformSwapBuffers(void)
+ 
+ bool platformHandleEvents(void)
+ {
+-    if (![window isVisible])
++    if (!g_headless && ![window isVisible])
+         return true;
+ 
+     @autoreleasepool {
+@@ -828,6 +1211,7 @@ bool platformHandleEvents(void)
                      g_runner->gamepads->connectedCount++;
                  }
              }
