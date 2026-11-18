@@ -372,6 +372,27 @@ Acceptance:
 - [self] The existing settings and save slot checks still pass.
 Status: done (2026-11-17)
 
+## M7 Randomizer, screenshots and engine checks (0.6.0)
+
+Found with tools/builtin-coverage.sh and Butterscotch patch 0013 (2026-11-18): the game's own randomizer gave every game seed 0 and F12 saved nothing until the engine gained random_get_seed and screen_save.
+
+### S-040 Randomizer seed and Starting Paths
+As a randomizer player, I set a custom seed and the Starting Paths items before I start, and I see the seed of each randomized save so I can share it or play the same layout again.
+Screens: extras-randomizer
+Depends: S-039
+Notes: modifiers.ini in the profile folder (scr_load_mods): [RandomizerSeed] UseManualSeed (0), Seed (0, read as a number; the engine seeds with 32 bits); [RandomizerSettings] BombRun, PowerBombsRun, ScrewAttackRun (1; the items Classic Mode > Starting Paths may open Area 1 with; all off would leave its list empty). The game's Options menu writes the seed keys too (save_modifiers). A profile update rebuilds the folder, so it carries these five keys over. Saves: line 9 (sv6_randomizer) ends with mod_purerandombool, mod_randomgamebool, mod_splitrandom, mod_fusion, mod_diffmult, chozomessage, mod_gravity, global.gamemode and 25 zeros; gamemode 3 Classic Mode, 4 AM2Random, 5 Split Random (oSlotMenu_random). Line 11 is base64 of the seed. Checked on the owner's two normal saves (gamemode 1, not randomized).
+UX:
+- Flow: Extras > Randomizer: Use a Custom Seed, Seed (digits), Bomb Run, Power Bomb Run, Screw Attack Run; one row per randomized save, "Save 2 / AM2Random, seed 3390671227" with Copy Seed and Use Seed.
+- States: the last Starting Paths item on can't be turned off (help says why); a profile without modifiers.ini: "<Profile> has no randomizer settings."; while playing: off, like the rest of the page.
+Acceptance:
+- [unit] The shipped file reads as the game's defaults; writes change only the five keys and keep CRLF; seeds are cleaned to digits up to 4294967295.
+- [unit] An update carries the five keys over and nothing else.
+- [unit] A save tells Classic Mode, AM2Random and Split Random with its seed; a normal save is not randomized.
+- [self] Options round trip through a profile's modifiers.ini; a Split Random save shows its seed.
+- [snap] Extras shows Randomizer with the seed, the three Starting Paths and a randomized save's row.
+- [manual] A custom seed gives the same item layout in two new games.
+Status: done (2026-11-18), [manual] waits on the owner
+
 ## Later
 - Metal renderer and MetalFX upscaling in Butterscotch (a4f648ca)
 - Our own game patch (UndertaleModLib, .NET on the developer Mac) for tweaks Community Updates lacks: shorter item fanfare, faster save stations

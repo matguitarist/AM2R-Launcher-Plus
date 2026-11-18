@@ -107,6 +107,20 @@ enum Snapshot {
                 }
                 model.selection = saved
             }
+            // S-040: the whole Extras page, Randomizer and Save Slots included, in a window tall enough to hold it.
+            if only?.contains("extras-randomizer") ?? true,
+               let window = NSApp.windows.first(where: { $0.canBecomeMain && !$0.isSheet }) {
+                let frame = window.frame
+                let tall = min(1500, (window.screen ?? NSScreen.main)?.visibleFrame.height ?? frame.height)
+                window.setFrame(NSRect(x: frame.minX, y: frame.maxY - tall, width: frame.width, height: tall), display: true)
+                model.sidebar = .extras
+                for mode in ["light", "dark"] {
+                    NSApp.appearance = NSAppearance(named: mode == "light" ? .aqua : .darkAqua)
+                    try? await Task.sleep(for: .seconds(0.8))
+                    capture(to: "\(dir)/extras-randomizer-\(mode).png")
+                }
+                window.setFrame(frame, display: true)
+            }
             if only?.contains("play-running") ?? true {
                 model.sidebar = .play
                 model.previewPlaying = true

@@ -106,6 +106,8 @@ public enum ProfileBuilder {
 
         let xml = (try? String(contentsOf: staging.appending(path: "profile.xml"), encoding: .utf8)) ?? ""
         let info = PatchData.profileInfo(xml) ?? PatchData.ProfileInfo(name: "Community Updates", version: "?", author: "")
+        // An update keeps the player's randomizer seed and Starting Paths (S-040).
+        if fm.fileExists(atPath: destination.path) { try? RandomizerOptions.carryOver(from: destination, to: staging) }
         do {
             if fm.fileExists(atPath: destination.path) { try fm.removeItem(at: destination) }
             try fm.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)

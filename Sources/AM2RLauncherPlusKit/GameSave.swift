@@ -35,7 +35,7 @@ public struct GameSave: Equatable, Sendable {
     static let header = "[AM2R SaveData V7.0]"
 
     enum Line {
-        static let main = 1, items = 2, inventory = 7
+        static let main = 1, items = 2, inventory = 7, randomizer = 9, seed = 11
     }
 
     /// The decrypted file split at "\n", the last element being what follows the final newline.
@@ -67,6 +67,46 @@ public struct GameSave: Equatable, Sendable {
     /// The slots a save folder holds, in slot order: save1, save2, save3.
     public static func slots(in saves: URL) -> [URL] {
         (1...3).map { saves.appending(path: "save\($0)") }.filter { FileManager.default.fileExists(atPath: $0.path) }
+    }
+
+    // MARK: Randomizer
+
+    /// How the slot's game was randomized, or nil for a game that wasn't (S-040). sv6_randomizer ends
+    /// with mod_purerandombool, mod_randomgamebool, mod_splitrandom, mod_fusion, mod_diffmult,
+    /// chozomessage, mod_gravity, global.gamemode and 25 zeros, so they are read from the end.
+    public var randomizedGame: RandomizedGame? {
+        guard let values = (try? list(at: Line.randomizer))?.values, values.count >= 33 else { return nil }
+        let end = values.count - 25
+        let gameMode = values[end - 1].number ?? 0
+        let pureRandom = (values[end - 8].number ?? 0) != 0
+        let randomGame = (values[end - 7].number ?? 0) != 0
+        let splitRandom = (values[end - 6].number ?? 0) != 0
+        let mode: RandomizedGame.Mode
+        switch gameMode {
+        case 3: mode = .classic
+        case 4: mode = .am2Random
+        case 5: mode = .splitRandom
+        default:
+            guard pureRandom || randomGame || splitRandom else { return nil }
+            mode = splitRandom ? .splitRandom : pureRandom ? .randomGamePlus : .other
+        }
+        return RandomizedGame(mode: mode, seed: seed)
+    }
+
+    /// The seed line: base64 of string(oControl.seed), digits, maybe with GameMaker's decimals.
+    var seed: String {
+        guard lines.count > Line.seed else { return "0" }
+        var line = lines[Line.seed]
+        if line.last == UInt8(ascii: "\r") { line.removeLast() }
+        let text = Data(base64Encoded: line).flatMap { String(data: $0, encoding: .utf8) } ?? String(decoding: line, as: UTF8.self)
+        return RandomizerOptions.cleanSeed(text)
+    }
+
+    /// The randomized game in a slot, or nil when the slot can't be read or isn't randomized.
+    public static func randomizedGame(slot: URL, game: URL) -> RandomizedGame? {
+        guard let gameID = gameID(of: game), let data = try? Data(contentsOf: slot),
+              let save = try? GameSave(decrypting: data, gameID: gameID) else { return nil }
+        return save.randomizedGame
     }
 
     // MARK: Upgrades
@@ -126,7 +166,13 @@ public struct GameSave: Equatable, Sendable {
     /// lines, the seed and a final newline, as sv6_save writes them.
     public static func sample(gameID: UInt32) -> Data { sample(gameID: gameID, inventory: nil) }
 
-    static func sample(gameID: UInt32, inventory: [DSList.Value]?) -> Data {
+    /// A sample save of a randomized game: global.gamemode and the seed line as sv6_save writes them.
+    public static func sampleRandomized(gameID: UInt32, gameMode: Double, seed: String) -> Data {
+        let randomizer = Array(repeating: DSList.Value.real(0), count: 70) + [.real(gameMode)] + Array(repeating: .real(0), count: 25)
+        return sample(gameID: gameID, inventory: nil, randomizer: randomizer, seedLine: Data(seed.utf8).base64EncodedString())
+    }
+
+    static func sample(gameID: UInt32, inventory: [DSList.Value]?, randomizer: [DSList.Value] = [.int32(7)], seedLine: String = "12345") -> Data {
         let header = String(String.UnicodeScalarView(rc4(Array(Self.header.utf8), key: "HEADER_KEY").map { Unicode.Scalar($0) }))
         func list(_ values: [DSList.Value]) -> String {
             var list = DSList(hex: "2F01000000000000")!
@@ -139,7 +185,7 @@ public struct GameSave: Equatable, Sendable {
             + Array(repeating: .real(0), count: 6) + Array(repeating: .int32(0), count: 35)
         let lines = [header, list(main), list(Array(repeating: .real(0), count: 350)), list([.real(1), .string(Data("note".utf8))]),
                      list([.undefined, .int64(5), .bool(1)]), list([.array([.real(1), .real(2)])]), list([.real(47)]),
-                     list(inventory), list(Array(repeating: .real(0), count: 20)), list([.int32(7)]), list([.real(0)]), "12345", ""]
+                     list(inventory), list(Array(repeating: .real(0), count: 20)), list(randomizer), list([.real(0)]), seedLine, ""]
         return crypt(Data(lines.joined(separator: "\n").utf8), gameID: gameID)
     }
 

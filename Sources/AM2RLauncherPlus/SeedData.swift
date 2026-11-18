@@ -57,5 +57,13 @@ enum SeedData {
         for (file, name) in names {
             try? "[Header]\nLanguage = \"\(name)\"\n".write(to: lang.appending(path: file), atomically: true, encoding: .utf8)
         }
+        // S-040: the randomizer settings a real install brings, and a randomized game in save 2.
+        try? "[RandomizerSeed]\nUseManualSeed = 0\nSeed = 0000000000\n\n[RandomizerSettings]\nBombRun = 1\nPowerBombsRun = 1\nScrewAttackRun = 1\n"
+            .write(to: RandomizerOptions.file(in: current.folder), atomically: true, encoding: .utf8)
+        let gameID: UInt32 = 971_912_648, saves = GameRunner.saveFolder(for: current)
+        try? FileManager.default.createDirectory(at: saves, withIntermediateDirectories: true)
+        try? GameSave.sampleGameData(gameID: gameID).write(to: current.folder.appending(path: "game.ios"))
+        try? GameSave.sample(gameID: gameID).write(to: saves.appending(path: "save1"))
+        try? GameSave.sampleRandomized(gameID: gameID, gameMode: 4, seed: "3390671227").write(to: saves.appending(path: "save2"))
     }
 }

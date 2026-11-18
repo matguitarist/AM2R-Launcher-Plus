@@ -4,7 +4,8 @@ import SwiftUI
 
 /// One profile's settings, written to its config.ini (S-010 to S-012, S-035, S-038): they belong to
 /// the profile, not the app. The Play page shows display, controller, sound and language under the
-/// Play button; the Extras page shows the game's extra options and the save slot tools (S-039).
+/// Play button; the Extras page shows the game's extra options, the randomizer and the save slot tools
+/// (S-039, S-040).
 struct GameSettingsView<Header: View>: View {
     enum Part { case play, extras }
 
@@ -121,6 +122,7 @@ struct GameSettingsView<Header: View>: View {
                     statusFooter
                 }
                 .disabled(!canWrite)
+                RandomizerSection(profile: profile)
                 UpgradesSection(profile: profile)
             }
             if let saveError {

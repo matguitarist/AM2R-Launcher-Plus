@@ -198,6 +198,31 @@ enum SelfTest {
                 model.backupMessage = nil
             }
 
+            // S-040: the randomizer settings in a profile's modifiers.ini, and a randomized save's seed.
+            do {
+                let fm = FileManager.default
+                let random = model.addProfile(name: "Randomized", version: "1.5.5")
+                let saves = GameRunner.saveFolder(for: random), gameID: UInt32 = 971_912_648
+                try? fm.createDirectory(at: random.folder, withIntermediateDirectories: true)
+                try? fm.createDirectory(at: saves, withIntermediateDirectories: true)
+                try? GameSave.sampleGameData(gameID: gameID).write(to: random.folder.appending(path: "game.ios"))
+                try? "[RandomizerSeed]\r\nUseManualSeed = 0\r\nSeed = 0000000000\r\n\r\n[RandomizerSettings]\r\nBombRun = 1\r\nPowerBombsRun = 1\r\nScrewAttackRun = 1\r\n"
+                    .write(to: RandomizerOptions.file(in: random.folder), atomically: true, encoding: .utf8)
+                var options = RandomizerOptions.read(from: random.folder)
+                check("a new profile's randomizer reads the game's defaults", options == RandomizerOptions())
+                options?.useCustomSeed = true
+                options?.seed = "3390671227"
+                options?.screwAttackRun = false
+                try? options?.write(to: random.folder)
+                check("a custom seed and Starting Paths are written to modifiers.ini and read back",
+                      RandomizerOptions.read(from: random.folder) == options && options != nil)
+                let slot = saves.appending(path: "save3")
+                try? GameSave.sampleRandomized(gameID: gameID, gameMode: 5, seed: "42").write(to: slot)
+                check("a Split Random save shows its seed",
+                      GameSave.randomizedGame(slot: slot, game: random.folder.appending(path: "game.ios")) == RandomizedGame(mode: .splitRandom, seed: "42"))
+                model.delete(random, keepSaves: false)
+            }
+
             // S-020: the banner shows only for a profile built from older patch data.
             do {
                 let old = model.addProfile(name: "Old", version: "1.5.5")
