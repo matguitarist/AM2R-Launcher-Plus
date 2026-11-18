@@ -1,8 +1,8 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 9643079..21097ee 100644
+index 05f006a..5d07749 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -576,7 +576,7 @@ if(PLATFORM STREQUAL "cli" OR PLATFORM STREQUAL "vita" OR PLATFORM STREQUAL "swi
+@@ -587,7 +587,7 @@ if(PLATFORM STREQUAL "cli" OR PLATFORM STREQUAL "vita" OR PLATFORM STREQUAL "swi
      elseif(BACKEND STREQUAL "appkit")
          add_compile_definitions(USE_APPKIT)
          target_compile_definitions(butterscotch PRIVATE GL_SILENCE_DEPRECATION)
@@ -644,6 +644,34 @@ index 42ef176..ba7d9c3 100644
              if (shouldStep) {
                  Runner_handlePendingRoomChange(runner);
              }
+diff --git a/src/random.c b/src/random.c
+index 3d8ed87..a724562 100644
+--- a/src/random.c
++++ b/src/random.c
+@@ -3,7 +3,11 @@
+ #include "utils.h"
+ #include "random.h"
+ 
++// Seeding restarts the sequence: the same seed always gives the same numbers, like GameMaker.
++// (Before, the read position carried over, so random_set_seed(s) twice gave two different runs.)
+ void Random_setSeed(Random* m, uint32_t seed) {
++    m->seed = seed;
++    m->index = 0;
+     m->state[0] = seed;
+     for (int i = 1; 16 > i; ++i)
+         m->state[i] = i + 0x6C078965 * (m->state[i - 1] ^ (m->state[i - 1] >> 30));
+diff --git a/src/random.h b/src/random.h
+index 35a2b46..94c5653 100644
+--- a/src/random.h
++++ b/src/random.h
+@@ -6,6 +6,7 @@
+ typedef struct {
+     uint32_t state[16];
+     uint32_t index;
++    uint32_t seed; // last seed given to Random_setSeed (random_get_seed)
+ } Random;
+ 
+ void Random_setSeed(Random* m, uint32_t seed);
 diff --git a/src/renderer.h b/src/renderer.h
 index ae09f7d..284489e 100644
 --- a/src/renderer.h
@@ -659,10 +687,10 @@ index ae09f7d..284489e 100644
      int32_t (*gpuGetBlendMode)(Renderer* renderer);
      void (*gpuSetBlendMode)(Renderer* renderer, int32_t mode);
 diff --git a/src/runner.c b/src/runner.c
-index a4feef1..986a0db 100644
+index c5f3f74..2dc13dd 100644
 --- a/src/runner.c
 +++ b/src/runner.c
-@@ -2684,7 +2684,7 @@ Runner* Runner_create(DataWin* dataWin, VMContext* vm, Renderer* renderer, FileS
+@@ -2689,7 +2689,7 @@ Runner* Runner_create(DataWin* dataWin, VMContext* vm, Renderer* renderer, FileS
      repeat(shlen(vm->builtinMap), i) {
          bool isRegistered = shgeti(vm->codeIndexByName, vm->builtinMap[i].key) != -1;
          if (isRegistered) {
@@ -671,7 +699,7 @@ index a4feef1..986a0db 100644
          }
      }
      }
-@@ -4114,7 +4114,9 @@ static void persistRoomState(Runner* runner, int32_t roomIndex) {
+@@ -4119,7 +4119,9 @@ static void persistRoomState(Runner* runner, int32_t roomIndex) {
          Instance* inst = runner->instances[i];
          if (inst->persistent) {
              arrput(keptInstances, inst);
@@ -682,7 +710,7 @@ index a4feef1..986a0db 100644
              arrput(state->instances, inst);
          } else {
              hmdel(runner->instancesById, inst->instanceId);
-@@ -5400,3 +5402,18 @@ void Runner_free(Runner* runner) {
+@@ -5405,3 +5407,18 @@ void Runner_free(Runner* runner) {
          free(runner->windowTitle);
      free(runner);
  }
@@ -702,7 +730,7 @@ index a4feef1..986a0db 100644
 +    logInfo("Runner: display_reset applied, surfaces lost\n");
 +}
 diff --git a/src/runner.h b/src/runner.h
-index d85955c..d9d86ca 100644
+index b219856..edb565c 100644
 --- a/src/runner.h
 +++ b/src/runner.h
 @@ -756,10 +756,16 @@ struct Runner {
@@ -722,7 +750,7 @@ index d85955c..d9d86ca 100644
      bool (*getWindowFullscreen)(void);
      void (*setWindowFullscreen)(bool fullscreen);
      void (*setCursor)(int32_t cursorType);
-@@ -926,6 +932,7 @@ struct Runner {
+@@ -929,6 +935,7 @@ struct Runner {
  
  const char* Runner_getEventName(int32_t eventType, int32_t eventSubtype);
  void Runner_reset(Runner* runner);
@@ -756,7 +784,7 @@ index 862c28e..646b658 100644
      }
  
 diff --git a/src/vm_builtins.c b/src/vm_builtins.c
-index 4cbc295..369cc96 100644
+index ccc9f52..d7349fd 100644
 --- a/src/vm_builtins.c
 +++ b/src/vm_builtins.c
 @@ -28,6 +28,8 @@
@@ -768,7 +796,20 @@ index 4cbc295..369cc96 100644
  #include "text_utils.h"
  #include "collision.h"
  #include "ini.h"
-@@ -4918,7 +4920,34 @@ static RValue builtin_os_get_region(MAYBE_UNUSED VMContext* ctx, MAYBE_UNUSED RV
+@@ -3616,6 +3618,12 @@ static RValue builtin_random_set_seed(MAYBE_UNUSED VMContext* ctx, RValue* args,
+     return RValue_makeUndefined();
+ }
+ 
++// random_get_seed(): the seed last set by random_set_seed or randomize. AM2R's randomizer calls
++// randomize() and then seeds itself with random_get_seed(), so without it every seed was 0.
++static RValue builtin_random_get_seed(VMContext* ctx, MAYBE_UNUSED RValue* args, MAYBE_UNUSED int32_t argCount) {
++    return RValue_makeReal((GMLReal) ctx->runner->random.seed);
++}
++
+ static RValue builtin_random(MAYBE_UNUSED VMContext* ctx, RValue* args, int32_t argCount) {
+     REQUIRE_ARGC_AT_LEAST("random", 1, RValue_makeReal(0.0));
+     GMLReal n = RValue_toReal(args[0]);
+@@ -4961,7 +4969,34 @@ static RValue builtin_os_get_region(MAYBE_UNUSED VMContext* ctx, MAYBE_UNUSED RV
      return RValue_makeOwnedString(safeStrdup("US"));
  }
  
@@ -804,7 +845,7 @@ index 4cbc295..369cc96 100644
  
  // ===[ XBOX ONE FUNCTIONS ]===
  
-@@ -8637,6 +8666,16 @@ static RValue builtin_gamepad_get_device_count(VMContext* ctx, RValue* args, int
+@@ -8704,6 +8739,16 @@ static RValue builtin_gamepad_get_device_count(VMContext* ctx, RValue* args, int
      return RValue_makeReal((GMLReal) RunnerGamepad_getDeviceCount(runner->gamepads));
  }
  
@@ -821,7 +862,79 @@ index 4cbc295..369cc96 100644
  static RValue builtin_gamepad_is_connected(VMContext* ctx, RValue* args, int32_t argCount) {
      Runner* runner = ctx->runner;
      if (runner == NULL || runner->gamepads == NULL) return RValue_makeBool(false);
-@@ -9812,6 +9851,13 @@ static RValue builtin_window_set_position(VMContext* ctx, RValue* args, MAYBE_UN
+@@ -9148,6 +9193,21 @@ static RValue builtin_file_text_open_write(VMContext* ctx, RValue* args, int32_t
+     return RValue_makeReal((GMLReal) slot);
+ }
+ 
++// file_text_open_append(fname): like open_write, but starts from the file's current text so writes go at the end.
++static RValue builtin_file_text_open_append(VMContext* ctx, RValue* args, int32_t argCount) {
++    RValue handle = builtin_file_text_open_write(ctx, args, argCount);
++    int32_t slot = RValue_toInt32(handle);
++    if (0 > slot) return handle;
++    Runner* runner = ctx->runner;
++    FileSystem* fs = runner->fileSystem;
++    char* existing = fs->vtable->readFileText(fs, runner->openTextFiles[slot].filePath);
++    if (existing != nullptr) {
++        free(runner->openTextFiles[slot].writeBuffer);
++        runner->openTextFiles[slot].writeBuffer = existing;
++    }
++    return handle;
++}
++
+ static RValue builtin_file_text_close(VMContext* ctx, RValue* args, int32_t argCount) {
+     REQUIRE_ARGC_AT_LEAST("file_text_close", 1, RValue_makeUndefined());
+     Runner* runner = ctx->runner;
+@@ -9607,6 +9667,15 @@ static RValue builtin_keyboard_clear(VMContext* ctx, RValue* args, int32_t argCo
+     return RValue_makeUndefined();
+ }
+ 
++// io_clear(): forget every key and mouse button state, as if nothing were held or just pressed.
++// AM2R calls it when you start rebinding a control, so the key that opened the edit isn't taken as the new binding.
++static RValue builtin_io_clear(VMContext* ctx, MAYBE_UNUSED RValue* args, MAYBE_UNUSED int32_t argCount) {
++    Runner* runner = ctx->runner;
++    RunnerKeyboard_clear(runner->keyboard, VK_ANYKEY);
++    RunnerMouse_clear(runner->mouse, GML_MB_ANY);
++    return RValue_makeUndefined();
++}
++
+ static RValue builtin_keyboard_set_map(VMContext* ctx, RValue* args, int32_t argCount) {
+     REQUIRE_ARGC_AT_LEAST("keyboard_set_map", 2, RValue_makeUndefined());
+     Runner* runner = ctx->runner;
+@@ -9706,6 +9775,33 @@ static RValue builtin_joystick_ypos(VMContext* ctx, RValue* args, int32_t argCou
+     return RValue_makeReal((GMLReal) RunnerGamepad_axisValue(runner->gamepads, id, GP_AXIS_LV));
+ }
+ 
++// joystick_zpos/rpos: the right stick (axes 3 and 4, what joystick_axes counts). upos/vpos: the
++// triggers as 0..1 (axes 5 and 6). AM2R's joypad options let the player pick any of the six.
++static GMLReal joystickExtraAxis(VMContext* ctx, RValue* args, int32_t argCount, int32_t axis, int32_t button) {
++    if (1 > argCount) return 0.0;
++    Runner* runner = ctx->runner;
++    if (runner == NULL || runner->gamepads == NULL) return 0.0;
++    int32_t id = RValue_toInt32(args[0]) - 1;
++    if (axis != 0) return (GMLReal) RunnerGamepad_axisValue(runner->gamepads, id, axis);
++    return (GMLReal) RunnerGamepad_buttonValue(runner->gamepads, id, button);
++}
++
++static RValue builtin_joystick_zpos(VMContext* ctx, RValue* args, int32_t argCount) {
++    return RValue_makeReal(joystickExtraAxis(ctx, args, argCount, GP_AXIS_RH, 0));
++}
++
++static RValue builtin_joystick_rpos(VMContext* ctx, RValue* args, int32_t argCount) {
++    return RValue_makeReal(joystickExtraAxis(ctx, args, argCount, GP_AXIS_RV, 0));
++}
++
++static RValue builtin_joystick_upos(VMContext* ctx, RValue* args, int32_t argCount) {
++    return RValue_makeReal(joystickExtraAxis(ctx, args, argCount, 0, GP_SHOULDERLB));
++}
++
++static RValue builtin_joystick_vpos(VMContext* ctx, RValue* args, int32_t argCount) {
++    return RValue_makeReal(joystickExtraAxis(ctx, args, argCount, 0, GP_SHOULDERRB));
++}
++
+ static RValue builtin_joystick_direction(VMContext* ctx, RValue* args, int32_t argCount) {
+     // Returns the joystick direction
+     REQUIRE_ARGC_AT_LEAST("joystick_direction", 1, RValue_makeReal(101.0));
+@@ -9879,6 +9975,13 @@ static RValue builtin_window_set_position(VMContext* ctx, RValue* args, MAYBE_UN
      return RValue_makeUndefined();
  }
  
@@ -835,7 +948,7 @@ index 4cbc295..369cc96 100644
  static RValue builtin_window_set_size(VMContext* ctx, RValue* args, MAYBE_UNUSED int32_t argCount) {
      REQUIRE_ARGC_AT_LEAST("window_set_size", 2, RValue_makeUndefined());
  
-@@ -13105,6 +13151,43 @@ static RValue builtin_surface_resize(VMContext* ctx, RValue* args, MAYBE_UNUSED
+@@ -13172,6 +13275,56 @@ static RValue builtin_surface_resize(VMContext* ctx, RValue* args, MAYBE_UNUSED
      return RValue_makeUndefined();
  }
  
@@ -852,34 +965,47 @@ index 4cbc295..369cc96 100644
 +
 +// surface_save(surface, fname): a PNG whatever the name, like GMS. AM2R saves its pause backdrop
 +// as working_directory + "/tempscr" and reloads it with background_add when the surface was lost.
++static bool saveSurfacePng(VMContext* ctx, int32_t surfaceId, RValue pathValue);
++
 +static RValue builtin_surface_save(VMContext* ctx, RValue* args, int32_t argCount) {
++    if (ctx->runner == nullptr || argCount < 2) return RValue_makeBool(false);
++    return RValue_makeBool(saveSurfacePng(ctx, (int32_t) RValue_toReal(args[0]), args[1]));
++}
++
++// screen_save(fname): saves the last finished frame, taken from the application surface at the game's size.
++// AM2R saves snap/snap NNNN.png with it when you press F12.
++static RValue builtin_screen_save(VMContext* ctx, RValue* args, int32_t argCount) {
++    if (ctx->runner == nullptr || argCount < 1) return RValue_makeBool(false);
++    return RValue_makeBool(saveSurfacePng(ctx, ctx->runner->applicationSurfaceId, args[0]));
++}
++
++static bool saveSurfacePng(VMContext* ctx, int32_t surfaceId, RValue pathValue) {
 +    Runner* runner = ctx->runner;
-+    if (runner == nullptr || runner->fileSystem == nullptr || argCount < 2) return RValue_makeBool(false);
-+    int32_t surfaceId = (int32_t) RValue_toReal(args[0]);
++    if (runner->fileSystem == nullptr) return false;
 +    int32_t w = (int32_t) Renderer_getSurfaceWidth(runner->renderer, surfaceId);
 +    int32_t h = (int32_t) Renderer_getSurfaceHeight(runner->renderer, surfaceId);
-+    if (w <= 0 || h <= 0) return RValue_makeBool(false);
++    if (w <= 0 || h <= 0) return false;
 +    uint8_t* pixels = (uint8_t*) safeMalloc((size_t) w * (size_t) h * 4);
 +    if (!runner->renderer->vtable->surfaceGetPixels(runner->renderer, surfaceId, pixels)) {
 +        free(pixels);
-+        return RValue_makeBool(false);
++        return false;
 +    }
 +    // surfaceGetPixels returns the bottom row first; a negative stride writes it top down.
 +    PngBuffer png = { nullptr, 0 };
 +    int stride = w * 4;
 +    bool ok = stbi_write_png_to_func(appendPng, &png, w, h, 4, pixels + (size_t) (h - 1) * (size_t) stride, -stride) != 0;
 +    free(pixels);
-+    char* path = RValue_toString(args[1], ctx->dataWin);
++    char* path = RValue_toString(pathValue, ctx->dataWin);
 +    ok = ok && png.data != nullptr && runner->fileSystem->vtable->writeFileBinary(runner->fileSystem, path, png.data, png.size);
 +    free(path);
 +    free(png.data);
-+    return RValue_makeBool(ok);
++    return ok;
 +}
 +
  static RValue builtin_surface_getpixel(VMContext* ctx, RValue* args, MAYBE_UNUSED int32_t argCount) {
      Runner* runner = ctx->runner;
  
-@@ -13384,10 +13467,89 @@ static RValue builtin_surface_get_texture(VMContext* ctx, RValue* args, MAYBE_UN
+@@ -13451,10 +13604,106 @@ static RValue builtin_surface_get_texture(VMContext* ctx, RValue* args, MAYBE_UN
  }
  
  // Sprite functions
@@ -970,10 +1096,27 @@ index 4cbc295..369cc96 100644
 +    bg->present = true;
 +    bg->tpagIndex = dw->sprt.sprites[spriteIndex].tpagIndices[0];
 +    return RValue_makeReal((GMLReal) bgIndex);
++}
++
++// background_replace(ind, fname, removeback, smooth): points an existing background at a new image.
++// AM2R swaps its title logo for the one in lang/titles/ that matches the game language.
++static RValue builtin_background_replace(VMContext* ctx, RValue* args, int32_t argCount) {
++    REQUIRE_ARGC_AT_LEAST("background_replace", 2, RValue_makeUndefined());
++    DataWin* dw = ctx->dataWin;
++    int32_t bgIndex = RValue_toInt32(args[0]);
++    if (0 > bgIndex || (uint32_t) bgIndex >= dw->bgnd.count) return RValue_makeUndefined();
++    char* path = RValue_toString(args[1], dw);
++    bool removeback = argCount > 2 && RValue_toBool(args[2]);
++    int32_t spriteIndex = createSpriteFromImageFile(ctx, path, 1, removeback, 0, 0, -1);
++    free(path);
++    if (0 > spriteIndex) return RValue_makeUndefined();
++    // createSpriteFromImageFile may grow the sprite and TPAG tables; the background table is untouched.
++    dw->bgnd.backgrounds[bgIndex].tpagIndex = dw->sprt.sprites[spriteIndex].tpagIndices[0];
++    return RValue_makeUndefined();
  }
  
  static RValue builtin_sprite_exists(VMContext* ctx, RValue* args, MAYBE_UNUSED int32_t argCount) {
-@@ -13779,8 +13941,21 @@ static RValue builtin_color_get_value(MAYBE_UNUSED VMContext* ctx, RValue* args,
+@@ -13846,8 +14095,21 @@ static RValue builtin_color_get_value(MAYBE_UNUSED VMContext* ctx, RValue* args,
  }
  
  // Display stubs
@@ -997,7 +1140,75 @@ index 4cbc295..369cc96 100644
  
  static int32_t resolveGuiWidth(Runner* runner) {
      if (runner->guiWidth > 0) return runner->guiWidth;
-@@ -24747,6 +24922,7 @@ void VMBuiltins_registerAll(VMContext* ctx) {
+@@ -15996,6 +16258,23 @@ static RValue builtin_tile_set_alpha(VMContext* ctx, RValue* args, MAYBE_UNUSED
+     return RValue_makeUndefined();
+ }
+ 
++// tile_set_scale(id, xscale, yscale) - a negative scale mirrors the tile around its x/y.
++// AM2R mirrors a few tiles this way in room creation code (rm_a0h18, rm_a8a12, rm_a8h01).
++static RValue builtin_tile_set_scale(VMContext* ctx, RValue* args, int32_t argCount) {
++    REQUIRE_ARGC_AT_LEAST("tile_set_scale", 3, RValue_makeUndefined());
++    Room* room = ctx->runner->currentRoom;
++    if (room == nullptr) return RValue_makeUndefined();
++    uint32_t id = (uint32_t) RValue_toInt32(args[0]);
++    repeat(room->tileCount, i) {
++        if (room->tiles[i].instanceID != id) continue;
++        room->tiles[i].scaleX = (float) RValue_toReal(args[1]);
++        room->tiles[i].scaleY = (float) RValue_toReal(args[2]);
++        return RValue_makeUndefined();
++    }
++    logWarn("VM: tile_set_scale: tile does not exist (%u)\n", id);
++    return RValue_makeUndefined();
++}
++
+ // tile_get_ids_at_depth(depth) - returns a 1D array of tile ids whose tileDepth matches.
+ static RValue builtin_tile_get_ids_at_depth(VMContext* ctx, RValue* args, MAYBE_UNUSED int32_t argCount) {
+     Runner* runner = ctx->runner;
+@@ -20110,6 +20389,35 @@ static RValue builtin_gpu_get_texfilter(VMContext* ctx, MAYBE_UNUSED RValue* arg
+     return RValue_makeReal(ctx->runner->renderer->texFilter ? 1.0 : 0.0);
+ }
+ 
++// texture_set_interpolation_ext(stage, on): per-sampler filtering isn't modelled. AM2R sets it on its palette
++// texture and samples texel centres (pal_swap_set), where linear and nearest give the same colour.
++static RValue builtin_texture_set_interpolation_ext(MAYBE_UNUSED VMContext* ctx, MAYBE_UNUSED RValue* args, MAYBE_UNUSED int32_t argCount) {
++    return RValue_makeUndefined();
++}
++
++// Nothing to do on a desktop: os_powersave_enable (mobile frame-rate saving).
++static RValue builtin_noop(MAYBE_UNUSED VMContext* ctx, MAYBE_UNUSED RValue* args, MAYBE_UNUSED int32_t argCount) {
++    return RValue_makeUndefined();
++}
++
++// show_message / show_message_async(str): no modal dialogs here, so the message goes to the log.
++// AM2R uses them for "Save Data Corrupted" and its alert() script.
++static RValue builtin_show_message(VMContext* ctx, RValue* args, int32_t argCount) {
++    if (argCount > 0) {
++        char* text = RValue_toString(args[0], ctx->dataWin);
++        logWarn("show_message: %s\n", text);
++        free(text);
++    }
++    return RValue_makeReal(-1.0);
++}
++
++// get_integer / get_string(str, def): no input dialog, so the default comes back (AM2R's debug keys).
++static RValue builtin_get_default(MAYBE_UNUSED VMContext* ctx, RValue* args, int32_t argCount) {
++    if (argCount < 2) return RValue_makeUndefined();
++    if (args[1].type == RVALUE_STRING) return RValue_makeOwnedString(safeStrdup(args[1].string != nullptr ? args[1].string : ""));
++    return RValue_makeReal(RValue_toReal(args[1]));
++}
++
+ static RValue builtin_gpu_set_alphatestenable(VMContext* ctx, RValue* args, int32_t argCount) {
+     bool enable = RValue_toBool(args[0]);
+     ctx->runner->renderer->vtable->gpuSetAlphaTestEnable(ctx->runner->renderer, enable);
+@@ -24730,6 +25038,7 @@ void VMBuiltins_registerAll(VMContext* ctx) {
+     VM_registerBuiltin(ctx, "irandom", builtin_irandom);
+     VM_registerBuiltin(ctx, "irandom_range", builtin_irandom_range);
+     VM_registerBuiltin(ctx, "choose", builtin_choose);
++    VM_registerBuiltin(ctx, "random_get_seed", builtin_random_get_seed);
+     VM_registerBuiltin(ctx, "randomize", builtin_randomize);
+     VM_registerBuiltin(ctx, "randomise", builtin_randomize);
+ 
+@@ -24834,6 +25143,7 @@ void VMBuiltins_registerAll(VMContext* ctx) {
      VM_registerBuiltin(ctx, "os_get_language", builtin_os_get_language);
      VM_registerBuiltin(ctx, "os_get_region", builtin_os_get_region);
      VM_registerBuiltin(ctx, "os_is_paused", builtin_os_is_paused);
@@ -1005,7 +1216,7 @@ index 4cbc295..369cc96 100644
  
      // Xbox One
      VM_registerBuiltin(ctx, "xboxone_show_account_picker", builtin_xboxone_show_account_picker);
-@@ -24958,6 +25134,7 @@ void VMBuiltins_registerAll(VMContext* ctx) {
+@@ -25046,6 +25356,7 @@ void VMBuiltins_registerAll(VMContext* ctx) {
      // Gamepad
      VM_registerBuiltin(ctx, "gamepad_get_device_count", builtin_gamepad_get_device_count);
      VM_registerBuiltin(ctx, "gamepad_is_connected", builtin_gamepad_is_connected);
@@ -1013,21 +1224,72 @@ index 4cbc295..369cc96 100644
      VM_registerBuiltin(ctx, "gamepad_button_check", builtin_gamepad_button_check);
      VM_registerBuiltin(ctx, "gamepad_button_check_pressed", builtin_gamepad_button_check_pressed);
      VM_registerBuiltin(ctx, "gamepad_button_check_released", builtin_gamepad_button_check_released);
-@@ -25290,6 +25467,7 @@ void VMBuiltins_registerAll(VMContext* ctx) {
+@@ -25082,6 +25393,7 @@ void VMBuiltins_registerAll(VMContext* ctx) {
+     // File
+     VM_registerBuiltin(ctx, "file_exists", builtin_file_exists);
+     VM_registerBuiltin(ctx, "file_text_open_write", builtin_file_text_open_write);
++    VM_registerBuiltin(ctx, "file_text_open_append", builtin_file_text_open_append);
+     VM_registerBuiltin(ctx, "file_text_open_read", builtin_file_text_open_read);
+     VM_registerBuiltin(ctx, "file_text_close", builtin_file_text_close);
+     VM_registerBuiltin(ctx, "file_text_write_string", builtin_file_text_write_string);
+@@ -25114,6 +25426,7 @@ void VMBuiltins_registerAll(VMContext* ctx) {
+     VM_registerBuiltin(ctx, "keyboard_key_press", builtin_keyboard_key_press);
+     VM_registerBuiltin(ctx, "keyboard_key_release", builtin_keyboard_key_release);
+     VM_registerBuiltin(ctx, "keyboard_clear", builtin_keyboard_clear);
++    VM_registerBuiltin(ctx, "io_clear", builtin_io_clear);
+     VM_registerBuiltin(ctx, "keyboard_set_map", builtin_keyboard_set_map);
+     VM_registerBuiltin(ctx, "keyboard_get_map", builtin_keyboard_get_map);
+     VM_registerBuiltin(ctx, "keyboard_unset_map", builtin_keyboard_unset_map);
+@@ -25133,6 +25446,10 @@ void VMBuiltins_registerAll(VMContext* ctx) {
+         VM_registerBuiltin(ctx, "joystick_axes", builtin_joystick_axes);
+         VM_registerBuiltin(ctx, "joystick_xpos", builtin_joystick_xpos);
+         VM_registerBuiltin(ctx, "joystick_ypos", builtin_joystick_ypos);
++        VM_registerBuiltin(ctx, "joystick_zpos", builtin_joystick_zpos);
++        VM_registerBuiltin(ctx, "joystick_rpos", builtin_joystick_rpos);
++        VM_registerBuiltin(ctx, "joystick_upos", builtin_joystick_upos);
++        VM_registerBuiltin(ctx, "joystick_vpos", builtin_joystick_vpos);
+         VM_registerBuiltin(ctx, "joystick_direction", builtin_joystick_direction);
+         VM_registerBuiltin(ctx, "joystick_pov", builtin_joystick_pov);
+         VM_registerBuiltin(ctx, "joystick_check_button", builtin_joystick_check_button);
+@@ -25378,6 +25695,8 @@ void VMBuiltins_registerAll(VMContext* ctx) {
      VM_registerBuiltin(ctx, "surface_reset_target", builtin_surface_reset_target);
      VM_registerBuiltin(ctx, "surface_get_target", builtin_surface_get_target);
      VM_registerBuiltin(ctx, "surface_getpixel", builtin_surface_getpixel);
 +    VM_registerBuiltin(ctx, "surface_save", builtin_surface_save);
++    VM_registerBuiltin(ctx, "screen_save", builtin_screen_save);
      VM_registerBuiltin(ctx, "surface_getpixel_ext", builtin_surface_getpixel_ext);
      VM_registerBuiltin(ctx, "surface_exists", builtin_surface_exists);
      VM_registerBuiltin(ctx, "surface_get_width", builtin_surface_get_width);
-@@ -25301,6 +25479,9 @@ void VMBuiltins_registerAll(VMContext* ctx) {
+@@ -25389,6 +25708,10 @@ void VMBuiltins_registerAll(VMContext* ctx) {
  
      // Sprite info
      VM_registerBuiltin(ctx, "sprite_add", builtin_sprite_add);
 +    VM_registerBuiltin(ctx, "sprite_replace", builtin_sprite_replace);
 +    VM_registerBuiltin(ctx, "display_reset", builtin_display_reset);
 +    VM_registerBuiltin(ctx, "background_add", builtin_background_add);
++    VM_registerBuiltin(ctx, "background_replace", builtin_background_replace);
      VM_registerBuiltin(ctx, "sprite_exists", builtin_sprite_exists);
      VM_registerBuiltin(ctx, "sprite_get_width", builtin_sprite_get_width);
      VM_registerBuiltin(ctx, "sprite_get_height", builtin_sprite_get_height);
+@@ -25491,6 +25814,7 @@ void VMBuiltins_registerAll(VMContext* ctx) {
+         VM_registerBuiltin(ctx, "tile_get_top", builtin_tile_get_top);
+         VM_registerBuiltin(ctx, "tile_get_background", builtin_tile_get_background);
+         VM_registerBuiltin(ctx, "tile_set_alpha", builtin_tile_set_alpha);
++        VM_registerBuiltin(ctx, "tile_set_scale", builtin_tile_set_scale);
+         VM_registerBuiltin(ctx, "tile_set_visible", builtin_layer_tile_visible);
+     }
+ 
+@@ -25917,6 +26241,13 @@ void VMBuiltins_registerAll(VMContext* ctx) {
+     VM_registerBuiltin(ctx,"gpu_set_texfilter", builtin_gpu_set_texfilter);
+     VM_registerBuiltin(ctx,"gpu_set_tex_filter", builtin_gpu_set_texfilter);
+     VM_registerBuiltin(ctx,"gpu_get_texfilter", builtin_gpu_get_texfilter);
++    VM_registerBuiltin(ctx, "texture_set_interpolation", builtin_gpu_set_texfilter);
++    VM_registerBuiltin(ctx, "texture_set_interpolation_ext", builtin_texture_set_interpolation_ext);
++    VM_registerBuiltin(ctx, "os_powersave_enable", builtin_noop);
++    VM_registerBuiltin(ctx, "show_message", builtin_show_message);
++    VM_registerBuiltin(ctx, "show_message_async", builtin_show_message);
++    VM_registerBuiltin(ctx, "get_integer", builtin_get_default);
++    VM_registerBuiltin(ctx, "get_string", builtin_get_default);
+     VM_registerBuiltin(ctx,"gpu_set_alphatestenable", builtin_gpu_set_alphatestenable);
+     VM_registerBuiltin(ctx,"gpu_get_alphatestenable", builtin_gpu_get_alphatestenable);
+     VM_registerBuiltin(ctx,"gpu_set_alphatestref", builtin_gpu_set_alphatestref);
