@@ -29,6 +29,35 @@ private struct Fixture {
         process.waitUntilExit()
         return zip
     }
+
+    /// The same, packed as .7z by the system's bsdtar.
+    func sevenZip(_ name: String, files: [String: String]) -> URL {
+        let source = folder(name + "-src", files: files)
+        let archive = dir.appending(path: name + ".7z")
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/tar")
+        process.currentDirectoryURL = source
+        process.arguments = ["--format", "7zip", "-cf", archive.path] + files.keys.sorted()
+        try? process.run()
+        process.waitUntilExit()
+        return archive
+    }
+}
+
+@Test func reads7zLikeAZip() throws {
+    let fixture = Fixture()
+    #expect(throws: AM2R11.Problem.wrongDataWin) { try AM2R11.check(fixture.sevenZip("game", files: ["AM2R_11/data.win": "not the real game", "AM2R_11/AM2R.exe": "x"])) }
+    #expect(throws: AM2R11.Problem.missingDataWin) { try AM2R11.check(fixture.sevenZip("nogame", files: ["readme.txt": "hi"])) }
+    let broken = fixture.folder("d", files: ["broken.7z": "7z not really"]).appending(path: "broken.7z")
+    #expect(throws: AM2R11.Problem.unreadableZip) { try AM2R11.check(broken) }
+}
+
+@Test func a7zMemberIsHashedInPlace() {
+    let fixture = Fixture()
+    let archive = fixture.sevenZip("g", files: ["AM2R [1.1]/data.win": "abc"])
+    #expect(Zip.list(archive)?.contains("AM2R [1.1]/data.win") == true)
+    // MD5 of "abc".
+    #expect(Zip.md5(of: "AM2R [1.1]/data.win", in: archive) == "900150983cd24fb0d6963f7d28e17f72")
 }
 
 @Test func rejectsAFileThatIsNotAZip() throws {

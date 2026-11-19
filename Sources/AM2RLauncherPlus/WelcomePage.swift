@@ -23,7 +23,7 @@ struct WelcomePage: View {
         }
         .padding(Space.section)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .fileImporter(isPresented: $model.showChooser, allowedContentTypes: [.zip, .folder]) { result in
+        .fileImporter(isPresented: $model.showChooser, allowedContentTypes: [.zip, UTType(filenameExtension: "7z"), .folder].compactMap { $0 }) { result in
             if case .success(let url) = result { Task { await model.choose(url) } }
         }
     }
@@ -116,7 +116,7 @@ struct WelcomePage: View {
 
     private var title: String {
         switch model.welcome {
-        case .empty: "Drop AM2R_11.zip or its folder here"
+        case .empty: "Drop AM2R_11.zip (or .7z) or its folder here"
         case .checking: "Checking AM2R 1.1…"
         case .failed(let problem, _): problem.message
         case .ready: "AM2R 1.1 found"

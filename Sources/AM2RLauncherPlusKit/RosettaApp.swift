@@ -125,7 +125,7 @@ public enum RosettaApp {
         guard process.terminationStatus == 0 else { throw .copyFailed("codesign exited with \(process.terminationStatus)") }
     }
 
-    /// AM2R.exe from the 1.1 folder, or unzipped into `work`.
+    /// AM2R.exe from the 1.1 folder, or unpacked from its .zip or .7z into `work`.
     private static func windowsGame(source: URL, kind: AM2R11.Kind, root: String, work: URL) throws(Failure) -> URL {
         let fm = FileManager.default
         switch kind {
@@ -133,12 +133,17 @@ public enum RosettaApp {
             let exe = (root.isEmpty ? source : source.appending(path: root, directoryHint: .isDirectory)).appending(path: "AM2R.exe")
             guard fm.fileExists(atPath: exe.path) else { throw .noWindowsGame }
             return exe
-        case .zip:
+        case .zip, .sevenZip:
             do {
                 try fm.createDirectory(at: work, withIntermediateDirectories: true)
                 let process = Process()
-                process.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
-                process.arguments = ["-o", "-q", "-j", source.path, root + "AM2R.exe", "-d", work.path]
+                if kind == .sevenZip {
+                    process.executableURL = URL(fileURLWithPath: "/usr/bin/tar")
+                    process.arguments = Zip.sevenZipExtract(source, root: root, members: ["AM2R.exe"], into: work)
+                } else {
+                    process.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
+                    process.arguments = ["-o", "-q", "-j", source.path, root + "AM2R.exe", "-d", work.path]
+                }
                 process.standardOutput = FileHandle.nullDevice
                 process.standardError = FileHandle.nullDevice
                 try process.run()

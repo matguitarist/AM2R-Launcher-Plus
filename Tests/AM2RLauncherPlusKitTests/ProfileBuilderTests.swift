@@ -76,6 +76,22 @@ func buildsAProfileFromANestedZip() throws {
     #expect(FileManager.default.fileExists(atPath: result.folder.appending(path: "musarea1a.ogg").path))
 }
 
+@Test(.enabled(if: xdelta3 != nil), arguments: [true, false])
+func buildsAProfileFromA7z(nested: Bool) throws {
+    let setup = try Setup()
+    let archive = setup.dir.appending(path: "AM2R_11.7z")
+    let names = try FileManager.default.contentsOfDirectory(atPath: setup.game.path)
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/tar")
+    process.currentDirectoryURL = nested ? setup.dir : setup.game
+    process.arguments = ["--format", "7zip", "-cf", archive.path] + (nested ? ["AM2R_11"] : names)
+    try process.run()
+    process.waitUntilExit()
+    let result = try ProfileBuilder.build(source: archive, kind: .sevenZip, root: nested ? "AM2R_11/" : "", patchData: setup.patch, destination: setup.destination)
+    #expect((try? String(contentsOf: result.folder.appending(path: "game.ios"), encoding: .utf8))?.hasPrefix("PATCHED ") == true)
+    #expect(FileManager.default.fileExists(atPath: result.folder.appending(path: "musarea1a.ogg").path))
+}
+
 @Test(.enabled(if: xdelta3 != nil))
 func aFailedPatchLeavesNoProfileAndKeepsTheOldOne() throws {
     let setup = try Setup(validPatch: false)

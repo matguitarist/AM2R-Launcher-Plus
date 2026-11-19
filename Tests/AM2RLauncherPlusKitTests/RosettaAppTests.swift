@@ -82,6 +82,21 @@ func buildsTheRosettaAppFromAZip() throws {
 }
 
 @Test(.enabled(if: xdelta3 != nil))
+func buildsTheRosettaAppFromA7z() throws {
+    let setup = try RosettaSetup()
+    let archive = setup.dir.appending(path: "AM2R_11.7z")
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/tar")
+    process.currentDirectoryURL = setup.dir
+    process.arguments = ["--format", "7zip", "-cf", archive.path, "AM2R_11"]
+    try process.run()
+    process.waitUntilExit()
+    let app = try RosettaApp.build(source: archive, kind: .sevenZip, root: "AM2R_11/", patchData: setup.patch,
+                                   profileFolder: setup.profile, bundleIdentifier: setup.id, sign: false)
+    #expect((try? String(contentsOf: app.appending(path: "Contents/MacOS/Mac_Runner"), encoding: .utf8))?.hasPrefix("RUNNER ") == true)
+}
+
+@Test(.enabled(if: xdelta3 != nil))
 func aWrongExeLeavesNoRosettaApp() throws {
     let setup = try RosettaSetup(validPatch: false)
     #expect(throws: (any Error).self) {

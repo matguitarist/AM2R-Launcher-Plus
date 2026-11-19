@@ -134,6 +134,16 @@ public enum ProfileBuilder {
             process.waitUntilExit()
             guard process.terminationStatus == 0 else { throw Failure.extractFailed }
             return work
+        case .sevenZip:
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/tar")
+            process.arguments = Zip.sevenZipExtract(source, root: root, members: ["data.win", "*.ogg"], into: work)
+            process.standardOutput = FileHandle.nullDevice
+            process.standardError = FileHandle.nullDevice
+            try process.run()
+            process.waitUntilExit()
+            guard process.terminationStatus == 0 else { throw Failure.extractFailed }
+            return work
         case .folder:
             let base = root.isEmpty ? source : source.appending(path: root, directoryHint: .isDirectory)
             guard fm.fileExists(atPath: base.appending(path: "data.win").path) else { throw Failure.extractFailed }

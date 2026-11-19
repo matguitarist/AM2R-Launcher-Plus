@@ -1,20 +1,20 @@
 import CryptoKit
 import Foundation
 
-/// Recognizes the player's own AM2R 1.1 (a zip or an extracted folder).
+/// Recognizes the player's own AM2R 1.1 (a .zip or .7z, or an extracted folder).
 /// The rule follows AM2RLauncher's CheckIfZipIsAM2R11, relaxed for the native engine:
 /// `data.win` must be the 1.1 file; `AM2R.exe` is only needed for the Rosetta engine.
 public enum AM2R11 {
     public static let dataWinMD5 = "f2b84fe5ba64cb64e284be1066ca08ee"
     public static let exeMD5 = "15253f7a66d6ea3feef004ebbee9b438"
 
-    public enum Kind: String, Codable, Sendable { case zip, folder }
+    public enum Kind: String, Codable, Sendable { case zip, folder, sevenZip = "7z" }
 
     /// A checked AM2R 1.1 copy.
     public struct Copy: Equatable, Sendable {
         public var url: URL
         public var kind: Kind
-        /// Path inside the zip or folder that holds data.win ("" or "AM2R_11/").
+        /// Path inside the archive or folder that holds data.win ("" or "AM2R_11/").
         public var root: String
         /// False when AM2R.exe is missing or modified: Rosetta can't be used, Native still can.
         public var hasWindowsGame: Bool
@@ -36,22 +36,22 @@ public enum AM2R11 {
 
         public var message: String {
             switch self {
-            case .notZipOrFolder: "Choose a .zip file or a folder."
-            case .unreadableZip: "Unable to open this zip. It may be damaged."
-            case .missingDataWin: "No data.win in this folder or zip. Choose the AM2R 1.1 game files."
+            case .notZipOrFolder: "Choose a .zip or .7z file, or a folder."
+            case .unreadableZip: "Unable to open this archive. It may be damaged."
+            case .missingDataWin: "No data.win in this folder or archive. Choose the AM2R 1.1 game files."
             case .wrongDataWin: "This isn't AM2R 1.1. Its data.win doesn't match the 1.1 release."
             }
         }
     }
 
-    /// Checks a zip or folder. Hashes are cached by path, size and modified date.
+    /// Checks a .zip, .7z or folder. Hashes are cached by path, size and modified date.
     public static func check(_ url: URL, cache: HashCache? = nil) throws(Problem) -> Copy {
         var isDirectory: ObjCBool = false
         guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) else { throw .notZipOrFolder }
         if isDirectory.boolValue {
             return try checkFolder(url, cache: cache)
         }
-        guard url.pathExtension.lowercased() == "zip" else { throw .notZipOrFolder }
+        guard ["zip", "7z"].contains(url.pathExtension.lowercased()) else { throw .notZipOrFolder }
         return try checkZip(url, cache: cache)
     }
 
@@ -98,7 +98,7 @@ public enum AM2R11 {
             exeHash = exeKey.flatMap { cache?.value(for: $0) } ?? Zip.md5(of: root + "AM2R.exe", in: url)
             if let exeKey, let exeHash { cache?.store(exeHash, for: exeKey) }
         }
-        return Copy(url: url, kind: .zip, root: root, hasWindowsGame: exeHash == exeMD5)
+        return Copy(url: url, kind: Zip.isSevenZip(url) ? .sevenZip : .zip, root: root, hasWindowsGame: exeHash == exeMD5)
     }
 
     static func zipRoot(_ entries: [String]) -> String? {
@@ -183,17 +183,42 @@ public final class HashCache: @unchecked Sendable {
     }
 }
 
-/// Reads zips with the system's /usr/bin/unzip (no third-party code, streams large members).
+/// Reads zips with the system's /usr/bin/unzip, and .7z with its /usr/bin/tar (bsdtar), with no
+/// third-party code; large members are streamed.
 enum Zip {
+    static func isSevenZip(_ archive: URL) -> Bool { archive.pathExtension.lowercased() == "7z" }
+
     static func list(_ zip: URL) -> [String]? {
-        guard let output = zipinfo(["-1", zip.path]) else { return nil }
+        guard let output = isSevenZip(zip) ? tool("/usr/bin/tar", ["-tf", zip.path]) : tool("/usr/bin/zipinfo", ["-1", zip.path]) else { return nil }
         return String(decoding: output, as: UTF8.self).split(separator: "\n").map(String.init)
+    }
+
+    /// tar's arguments to extract `members` of a .7z into `folder`, dropping `root` from their paths
+    /// like unzip -j. Names are tar patterns, so * ? [ ] \ in `root` are escaped.
+    static func sevenZipExtract(_ archive: URL, root: String, members: [String], into folder: URL) -> [String] {
+        var literal = ""
+        for c in root {
+            if "*?[]\\".contains(c) { literal.append("\\") }
+            literal.append(c)
+        }
+        let depth = root.split(separator: "/").count
+        return ["-xf", archive.path, "-C", folder.path, "--strip-components", String(depth), "--"] + members.map { literal + $0 }
     }
 
     static func md5(of member: String, in zip: URL) -> String? {
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
-        process.arguments = ["-p", zip.path, member]
+        if isSevenZip(zip) {
+            var literal = ""
+            for c in member {
+                if "*?[]\\".contains(c) { literal.append("\\") }
+                literal.append(c)
+            }
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/tar")
+            process.arguments = ["-xOf", zip.path, "--", literal]
+        } else {
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
+            process.arguments = ["-p", zip.path, member]
+        }
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = FileHandle.nullDevice
@@ -210,9 +235,9 @@ enum Zip {
         return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }
 
-    private static func zipinfo(_ arguments: [String]) -> Data? {
+    private static func tool(_ path: String, _ arguments: [String]) -> Data? {
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/zipinfo")
+        process.executableURL = URL(fileURLWithPath: path)
         process.arguments = arguments
         let pipe = Pipe()
         process.standardOutput = pipe

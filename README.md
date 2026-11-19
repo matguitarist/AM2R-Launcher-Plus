@@ -4,7 +4,7 @@ A native Mac app for Apple silicon that turns your own copy of AM2R 1.1 into the
 [Community Updates](https://github.com/AM2R-Community-Developers) release and plays it natively,
 without Rosetta.
 
-- **Install:** drop `AM2R_11.zip` (or its folder) on the window. The app checks that it's the real 1.1,
+- **Install:** drop `AM2R_11.zip` (or a `.7z`, or its folder) on the window. The app checks that it's the real 1.1,
   downloads the Mac patch data, and patches it with a built-in xdelta decoder. No other tools needed.
 - **Play natively:** the game runs on [Butterscotch](https://github.com/ButterscotchRunner/Butterscotch),
   an open-source GameMaker runner, built for Apple silicon. Each profile can fall back to the official
