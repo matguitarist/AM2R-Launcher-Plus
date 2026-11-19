@@ -1,3 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-  <circle cx="512" cy="512" r="300" fill="#FFFFFF"/>
+  <!-- A large planet with one crater rising behind the buttes, and three stars. -->
+  <path fill-rule="evenodd" fill="#FFFFFF" d="M512 160 A300 300 0 1 1 511.9 160 Z M620 280 A62 62 0 1 0 620.1 280 Z M700 430 A34 34 0 1 0 700.1 430 Z"/>
+  <circle cx="170" cy="210" r="26" fill="#FFFFFF"/>
+  <circle cx="880" cy="170" r="20" fill="#FFFFFF"/>
+  <circle cx="860" cy="420" r="16" fill="#FFFFFF"/>
 </svg>

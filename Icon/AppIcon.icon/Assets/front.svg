@@ -1,4 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-  <path d="M430 330 C430 300 460 284 486 299 L716 482 C740 498 740 526 716 542 L486 725 C460 740 430 724 430 694 Z" fill="#FFFFFF"/>
-  <circle cx="772" cy="268" r="64" fill="#FFFFFF"/>
+  <!-- Rock buttes on the horizon of SR388: two mesas and a spire, filled to the bottom edge. -->
+  <path d="M0 760 L96 760 L128 640 L150 610 L262 610 L286 640 L318 760 L384 760 L396 700 L410 540 L436 520 L462 540 L476 700 L496 760
+           L600 760 L640 600 L668 570 L838 570 L866 600 L908 760 L1024 760 L1024 1024 L0 1024 Z" fill="#FFFFFF"/>
 </svg>
