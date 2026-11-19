@@ -128,7 +128,8 @@ struct GeneralSettings: View {
 extension GeneralSettings {
     func measure() async {
         let folder = DataFolder.url
-        size = await Task.detached(priority: .utility) { FolderMove.size(of: folder) }.value
+        let database = FolderMove.databaseFiles(store: Store.url, in: folder)
+        size = await Task.detached(priority: .utility) { FolderMove.size(of: folder, excluding: database) }.value
     }
 }
 

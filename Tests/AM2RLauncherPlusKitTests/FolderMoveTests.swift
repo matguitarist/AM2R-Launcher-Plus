@@ -27,12 +27,46 @@ struct FolderMoveTests {
         #expect(FolderMove.size(of: moved) == 5000 + 11 + 1)
     }
 
+    /// The default data folder is also where the database lives (~/Library/Application Support/AM2RLauncherPlus).
+    @Test func movingTheDefaultDataFolderLeavesTheDatabaseWhereItIs() throws {
+        let (root, data) = try makeData()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = data.appending(path: "AM2RLauncherPlus.store")
+        try Data("db".utf8).write(to: store)
+        let target = root.appending(path: "External", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
+        let keeping = FolderMove.databaseFiles(store: store, in: data)
+        #expect(keeping == ["AM2RLauncherPlus.store", "AM2RLauncherPlus.store-shm", "AM2RLauncherPlus.store-wal"])
+        let moved = try FolderMove.move(data, into: target, keeping: keeping)
+        #expect(FileManager.default.fileExists(atPath: store.path))
+        #expect(!FileManager.default.fileExists(atPath: moved.appending(path: "AM2RLauncherPlus.store").path))
+        #expect(FileManager.default.fileExists(atPath: moved.appending(path: "Saves/A/save1").path))
+    }
+
+    /// Moving back home: the default folder still exists, holding the database.
+    @Test func movesBackIntoTheFolderThatKeptTheDatabase() throws {
+        let (root, data) = try makeData()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = data.appending(path: "AM2RLauncherPlus.store")
+        try Data("db".utf8).write(to: store)
+        let keeping = FolderMove.databaseFiles(store: store, in: data)
+        let before = FolderMove.listFiles(in: data)
+        let target = root.appending(path: "External", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
+        let moved = try FolderMove.move(data, into: target, keeping: keeping)
+        let back = try FolderMove.move(moved, into: root, keeping: FolderMove.databaseFiles(store: store, in: moved))
+        #expect(back.path == data.resolvingSymlinksInPath().path)
+        #expect(FolderMove.listFiles(in: back) == before)
+        #expect(!FileManager.default.fileExists(atPath: moved.path))
+    }
+
     @Test func refusesAFolderThatAlreadyHasOne() throws {
         let (root, data) = try makeData()
         defer { try? FileManager.default.removeItem(at: root) }
         let target = root.appending(path: "Busy", directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: target.appending(path: "AM2RLauncherPlus"), withIntermediateDirectories: true)
-        #expect(throws: FolderMove.Failure.destinationExists("AM2RLauncherPlus")) { try FolderMove.move(data, into: target) }
+        // An existing AM2RLauncherPlus folder is fine (moving back home); one that already has saves isn't.
+        try FileManager.default.createDirectory(at: target.appending(path: "AM2RLauncherPlus/Saves"), withIntermediateDirectories: true)
+        #expect(throws: FolderMove.Failure.destinationExists("AM2RLauncherPlus/Saves")) { try FolderMove.move(data, into: target) }
         #expect(FolderMove.listFiles(in: data).count == 3)
     }
 

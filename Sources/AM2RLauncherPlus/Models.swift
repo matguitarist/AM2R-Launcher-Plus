@@ -1007,9 +1007,11 @@ final class AppModel {
         dataMoveError = nil
         dataMove = (0, 0)
         let source = DataFolder.url
+        // The database stays where it is: the app has it open, and Store.url never follows the move.
+        let keeping = FolderMove.databaseFiles(store: Store.url, in: source)
         let result = await Task.detached(priority: .userInitiated) { () -> Result<URL, FolderMove.Failure> in
             Result { () throws(FolderMove.Failure) in
-                try FolderMove.move(source, into: parent) { done, total in
+                try FolderMove.move(source, into: parent, keeping: keeping) { done, total in
                     Task { @MainActor in self.dataMove = (done, total) }
                 }
             }

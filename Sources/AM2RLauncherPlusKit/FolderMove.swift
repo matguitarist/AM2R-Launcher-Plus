@@ -1,10 +1,12 @@
 import Foundation
 
 /// Moves the data folder somewhere else, such as an external drive (S-013).
-/// Copies into a staging folder, checks every file arrived with its size, then deletes the old
-/// folder. If anything fails, the old folder stays and the partial copy is removed.
+/// Another disk: copies into a staging folder, checks every file arrived with its size, then deletes
+/// the old items. Same disk: renames each item. If anything fails, the old folder stays as it was.
+/// Top-level items named in `keeping` stay where they are: the database, which sits in the default folder.
 public enum FolderMove {
     public enum Failure: Error, Equatable, Sendable {
+        /// The chosen folder already has an item of that name where the data would go.
         case destinationExists(String)
         case insideItself
         case notEnoughSpace(needed: Int64, available: Int64)
@@ -23,24 +25,55 @@ public enum FolderMove {
         }
     }
 
+    /// The database's files when it sits in `folder` (the default data folder holds it), so a move leaves them.
+    public static func databaseFiles(store: URL, in folder: URL) -> Set<String> {
+        guard store.deletingLastPathComponent().standardizedFileURL.resolvingSymlinksInPath().path
+                == folder.standardizedFileURL.resolvingSymlinksInPath().path else { return [] }
+        let name = store.lastPathComponent
+        return [name, name + "-shm", name + "-wal"]
+    }
+
     /// Moves `source` into `parent`, keeping its name. Returns the new location.
+    /// The new folder may already exist (the default folder that holds the database) as long as
+    /// none of the moved items is in it.
     @discardableResult
-    public static func move(_ source: URL, into parent: URL, progress: (@Sendable (Int64, Int64) -> Void)? = nil) throws(Failure) -> URL {
+    public static func move(_ source: URL, into parent: URL, keeping: Set<String> = [],
+                            progress: (@Sendable (Int64, Int64) -> Void)? = nil) throws(Failure) -> URL {
         let fm = FileManager.default
         let source = source.standardizedFileURL.resolvingSymlinksInPath()
         let parent = parent.standardizedFileURL.resolvingSymlinksInPath()
         let destination = parent.appending(path: source.lastPathComponent, directoryHint: .isDirectory)
         if parent.path == source.path || parent.path.hasPrefix(source.path + "/") { throw .insideItself }
         if destination.path == source.path { return source }
-        if fm.fileExists(atPath: destination.path) { throw .destinationExists(source.lastPathComponent) }
 
-        let files = listFiles(in: source)
+        let items = ((try? fm.contentsOfDirectory(atPath: source.path)) ?? []).filter { !keeping.contains($0) }.sorted()
+        var isFolder: ObjCBool = false
+        if fm.fileExists(atPath: destination.path, isDirectory: &isFolder) {
+            guard isFolder.boolValue else { throw .destinationExists(source.lastPathComponent) }
+            if let clash = items.first(where: { fm.fileExists(atPath: destination.appending(path: $0).path) }) {
+                throw .destinationExists(source.lastPathComponent + "/" + clash)
+            }
+        }
+
+        let files = listFiles(in: source, excluding: keeping)
         let total = files.reduce(Int64(0)) { $0 + $1.size }
         progress?(0, total)
 
-        // Same disk: a rename is instant and can't half-fail.
+        // Same disk: a rename is instant. Undo the renames done so far if one fails.
         if volume(of: source) == volume(of: parent) {
-            do { try fm.moveItem(at: source, to: destination) } catch { throw .copyFailed("\(error)") }
+            var moved: [String] = []
+            do {
+                try fm.createDirectory(at: destination, withIntermediateDirectories: true)
+                for item in items {
+                    try fm.moveItem(at: source.appending(path: item), to: destination.appending(path: item))
+                    moved.append(item)
+                }
+            } catch {
+                for item in moved { try? fm.moveItem(at: destination.appending(path: item), to: source.appending(path: item)) }
+                removeIfEmpty(destination)
+                throw .copyFailed("\(error)")
+            }
+            removeIfEmpty(source)
             progress?(total, total)
             return destination
         }
@@ -64,37 +97,76 @@ public enum FolderMove {
             try? fm.removeItem(at: staging)
             throw .copyFailed("\(error)")
         }
-        let copied = Dictionary(uniqueKeysWithValues: listFiles(in: staging).map { ($0.path, $0.size) })
+        let copied = Dictionary(listFiles(in: staging).map { ($0.path, $0.size) }) { first, _ in first }
         for file in files where copied[file.path] != file.size {
             try? fm.removeItem(at: staging)
             throw .verifyFailed(file.path)
         }
-        do { try fm.moveItem(at: staging, to: destination) } catch {
+        do {
+            if fm.fileExists(atPath: destination.path) {
+                // Into the existing folder: the staging folder is on the same disk, so these are renames.
+                var moved: [String] = []
+                do {
+                    for item in items {
+                        try fm.moveItem(at: staging.appending(path: item), to: destination.appending(path: item))
+                        moved.append(item)
+                    }
+                } catch {
+                    for item in moved { try? fm.removeItem(at: destination.appending(path: item)) }
+                    throw error
+                }
+                try? fm.removeItem(at: staging)
+            } else {
+                try fm.moveItem(at: staging, to: destination)
+            }
+        } catch {
             try? fm.removeItem(at: staging)
             throw .copyFailed("\(error)")
         }
-        try? fm.removeItem(at: source)
+        for item in items { try? fm.removeItem(at: source.appending(path: item)) }
+        removeIfEmpty(source)
         return destination
     }
 
-    public struct File: Equatable, Sendable { public var path: String; public var size: Int64 }
+    public struct File: Equatable, Sendable {
+        public var path: String
+        public var size: Int64
+        public init(path: String, size: Int64) { self.path = path; self.size = size }
+    }
 
-    /// Every regular file under `folder`, with paths relative to it.
-    public static func listFiles(in folder: URL) -> [File] {
-        let base = folder.standardizedFileURL.resolvingSymlinksInPath().path
-        guard let walker = FileManager.default.enumerator(at: folder, includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey]) else { return [] }
+    /// Every regular file under `folder`, with paths relative to it, leaving out the top-level
+    /// items named in `excluding`.
+    public static func listFiles(in folder: URL, excluding: Set<String> = []) -> [File] {
+        let base = folder.standardizedFileURL.resolvingSymlinksInPath()
+        let keys: [URLResourceKey] = [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey]
+        guard let walker = FileManager.default.enumerator(at: base, includingPropertiesForKeys: keys) else { return [] }
         var files: [File] = []
         for case let url as URL in walker {
-            guard let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]), values.isRegularFile == true else { continue }
-            let path = url.standardizedFileURL.resolvingSymlinksInPath().path
-            guard path.hasPrefix(base + "/") else { continue }
-            files.append(File(path: String(path.dropFirst(base.count + 1)), size: Int64(values.fileSize ?? 0)))
+            let relative = relativePath(of: url, in: base)
+            guard let values = try? url.resourceValues(forKeys: Set(keys)) else { continue }
+            if walker.level == 1, excluding.contains(relative) {
+                // skipDescendants after a file would skip the last folder seen instead.
+                if values.isRegularFile != true, values.isSymbolicLink != true { walker.skipDescendants() }
+                continue
+            }
+            guard values.isSymbolicLink != true, values.isRegularFile == true else { continue }
+            files.append(File(path: relative, size: Int64(values.fileSize ?? 0)))
         }
         return files.sorted { $0.path < $1.path }
     }
 
-    public static func size(of folder: URL) -> Int64 {
-        listFiles(in: folder).reduce(0) { $0 + $1.size }
+    public static func size(of folder: URL, excluding: Set<String> = []) -> Int64 {
+        listFiles(in: folder, excluding: excluding).reduce(0) { $0 + $1.size }
+    }
+
+    private static func relativePath(of url: URL, in base: URL) -> String {
+        let path = url.standardizedFileURL.path, root = base.path
+        return path.hasPrefix(root + "/") ? String(path.dropFirst(root.count + 1)) : url.lastPathComponent
+    }
+
+    private static func removeIfEmpty(_ folder: URL) {
+        let left = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
+        if left.allSatisfy({ $0 == ".DS_Store" }) { try? FileManager.default.removeItem(at: folder) }
     }
 
     private static func volume(of url: URL) -> URL? {
