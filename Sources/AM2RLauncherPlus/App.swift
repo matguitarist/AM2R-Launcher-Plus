@@ -1,4 +1,5 @@
 import AppKit
+import AppTestKit
 import SwiftData
 import SwiftUI
 
@@ -148,21 +149,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// The self-test's result becomes the exit code, after a normal quit.
     func applicationWillTerminate(_ notification: Notification) {
-        if SelfTest.requested { exit(SelfTest.exitCode) }
+        SelfTest.exitIfRequested()
     }
 }
 
-/// Where the data lives: ~/Library/Application Support/AM2RLauncherPlus/AM2RLauncherPlus.store
+/// Where the data lives: ~/Library/Application Support/AM2RLauncherPlus/AM2RLauncherPlus.store,
+/// or APP_STORE's file in a test run (an APP_STORE outside /tmp quits with 1 before anything is read).
 nonisolated enum Store {
-    /// True when APP_STORE points somewhere else (tests, snapshots, seed data).
-    static var isOverridden: Bool {
-        !(ProcessInfo.processInfo.environment["APP_STORE"] ?? "").isEmpty
-    }
-
     static var url: URL {
-        if let path = ProcessInfo.processInfo.environment["APP_STORE"], !path.isEmpty {
-            return URL(fileURLWithPath: path)
-        }
+        if let test = TestRun.store() { return test }
         let dir = URL.applicationSupportDirectory.appending(path: "AM2RLauncherPlus", directoryHint: .isDirectory)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir.appending(path: "AM2RLauncherPlus.store")

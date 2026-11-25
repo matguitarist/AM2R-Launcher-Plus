@@ -1,4 +1,5 @@
 import AM2RLauncherPlusKit
+import AppTestKit
 import SwiftData
 import SwiftUI
 

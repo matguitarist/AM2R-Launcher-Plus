@@ -1,5 +1,6 @@
 import AM2RLauncherPlusKit
 import AppKit
+import AppTestKit
 import Foundation
 import SwiftData
 
@@ -8,9 +9,8 @@ import SwiftData
 @MainActor
 enum SeedData {
     static func insertIfRequested(into model: AppModel) {
-        guard ProcessInfo.processInfo.environment["APP_SEED"] == "1" else { return }
-        guard Store.isOverridden else {
-            print("APP_SEED ignored: APP_STORE must be a file in /tmp")
+        guard TestRun.isSeeded() else {
+            if ProcessInfo.processInfo.environment[TestRun.seedKey] == "1" { print("APP_SEED ignored: APP_STORE must be a file in /tmp") }
             return
         }
         let context = model.container.mainContext

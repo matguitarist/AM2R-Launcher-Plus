@@ -1,3 +1,4 @@
+import AppTestKit
 import Foundation
 import Sparkle
 
@@ -28,7 +29,7 @@ final class LauncherUpdater {
     }
 
     private init() {
-        controller = SPUStandardUpdaterController(startingUpdater: !Store.isOverridden, updaterDelegate: nil, userDriverDelegate: nil)
+        controller = SPUStandardUpdaterController(startingUpdater: !TestRun.isTestRun(), updaterDelegate: nil, userDriverDelegate: nil)
         checksAutomatically = controller.updater.automaticallyChecksForUpdates
         canCheck = controller.updater.canCheckForUpdates
         observations = [

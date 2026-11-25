@@ -1,4 +1,5 @@
 import AppKit
+import AppTestKit
 import Foundation
 import GameController
 import SwiftData
@@ -132,14 +133,14 @@ nonisolated enum DataFolder {
     nonisolated(unsafe) static var testLocation: URL?
 
     static var defaultURL: URL {
-        Store.isOverridden
+        TestRun.isTestRun()
             ? Store.url.deletingLastPathComponent().appending(path: Store.url.deletingPathExtension().lastPathComponent + "-data", directoryHint: .isDirectory)
             : URL.applicationSupportDirectory.appending(path: "AM2RLauncherPlus", directoryHint: .isDirectory)
     }
 
     /// The chosen location, or the default.
     static var url: URL {
-        let chosen = Store.isOverridden ? testLocation : UserDefaults.standard.string(forKey: defaultsKey).map { URL(fileURLWithPath: $0, isDirectory: true) }
+        let chosen = TestRun.isTestRun() ? testLocation : UserDefaults.standard.string(forKey: defaultsKey).map { URL(fileURLWithPath: $0, isDirectory: true) }
         let base = chosen ?? defaultURL
         // Never recreate a folder on a disk that's unplugged: that would make a fake /Volumes/<disk>.
         if FileManager.default.fileExists(atPath: base.deletingLastPathComponent().path) {
@@ -151,7 +152,7 @@ nonisolated enum DataFolder {
     /// Remembers a new location; the default location is stored as no choice.
     static func setLocation(_ url: URL) {
         let isDefault = url.standardizedFileURL.path == defaultURL.standardizedFileURL.path
-        if Store.isOverridden {
+        if TestRun.isTestRun() {
             testLocation = isDefault ? nil : url
         } else if isDefault {
             UserDefaults.standard.removeObject(forKey: defaultsKey)
@@ -162,7 +163,7 @@ nonisolated enum DataFolder {
 
     /// The data was on a disk that isn't connected now.
     static var isMissing: Bool {
-        let chosen = Store.isOverridden ? testLocation : UserDefaults.standard.string(forKey: defaultsKey).map { URL(fileURLWithPath: $0) }
+        let chosen = TestRun.isTestRun() ? testLocation : UserDefaults.standard.string(forKey: defaultsKey).map { URL(fileURLWithPath: $0) }
         guard let chosen else { return false }
         return !FileManager.default.fileExists(atPath: chosen.deletingLastPathComponent().path)
     }
@@ -285,7 +286,7 @@ final class AppModel {
     var selection: PersistentIdentifier?
     /// Settings reopens on the last tab. Test and snapshot runs leave it alone.
     var settingsTab: SettingsTab = SettingsTab(rawValue: UserDefaults.standard.string(forKey: "settings.tab") ?? "") ?? .general {
-        didSet { if !Store.isOverridden { UserDefaults.standard.set(settingsTab.rawValue, forKey: "settings.tab") } }
+        didSet { if !TestRun.isTestRun() { UserDefaults.standard.set(settingsTab.rawValue, forKey: "settings.tab") } }
     }
 
     var welcome: WelcomeState = .empty

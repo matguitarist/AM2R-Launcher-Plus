@@ -1,6 +1,6 @@
 import AM2RLauncherPlusKit
 import AppKit
-import IOKit.pwr_mgt
+import AppTestKit
 import SwiftData
 import SwiftUI
 
@@ -13,33 +13,11 @@ import SwiftUI
 /// Add APP_ACCENT=<id> to see the pages in another accent.
 enum Snapshot {
     static func runIfRequested(model: AppModel, openSettings: OpenSettingsAction, openWindow: OpenWindowAction) {
-        let env = ProcessInfo.processInfo.environment
-        guard let dir = env["APP_SNAPSHOT"], !dir.isEmpty else { return }
-        // Snapshots never run against the real database.
-        guard Store.isOverridden else {
-            print("SNAPSHOT refused: set APP_STORE to a file in /tmp")
-            NSApp.terminate(nil)
-            return
-        }
-        let only = env["APP_SNAPSHOT_PAGES"].map { Set($0.split(separator: ",").map(String.init)) }
+        // Snapshots never run against the real database: without APP_STORE in /tmp, this refuses and quits.
+        guard let run = SnapshotRun.requested(layout: { GridProbes.shared.write(to: $0.path, window: $1) }) else { return }
         Task {
-            // A sleeping display gives screencapture nothing. Declaring user
-            // activity wakes it; the assertion keeps it on until the run quits.
-            var activity: IOPMAssertionID = 0
-            IOPMAssertionDeclareUserActivity("Snapshots" as CFString, kIOPMUserActiveLocal, &activity)
-            var awake: IOPMAssertionID = 0
-            IOPMAssertionCreateWithName(kIOPMAssertionTypePreventUserIdleDisplaySleep as CFString,
-                                        IOPMAssertionLevel(kIOPMAssertionLevelOn), "Snapshots" as CFString, &awake)
-            try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
-            try? await Task.sleep(for: .seconds(1.5))
-            for mode in ["light", "dark"] {
-                NSApp.appearance = NSAppearance(named: mode == "light" ? .aqua : .darkAqua)
-                for page in SidebarItem.allCases where only?.contains(page.rawValue) ?? true {
-                    model.sidebar = page
-                    try? await Task.sleep(for: .seconds(0.8))
-                    capture(to: "\(dir)/\(page.rawValue)-\(mode).png")
-                }
-            }
+            await run.start()
+            await run.shootPages(SidebarItem.allCases.map(\.rawValue)) { model.sidebar = SidebarItem(rawValue: $0)! }
             // Welcome page states (S-001): welcome, welcome-checking, welcome-error, welcome-ready.
             let welcomeStates: [(String, WelcomeState)] = [
                 ("welcome", .empty),
@@ -48,14 +26,11 @@ enum Snapshot {
                 ("welcome-ready", .ready),
             ]
             let savedWelcome = model.welcome
-            for (name, state) in welcomeStates where only?.contains(name) ?? true {
-                model.sidebar = .play
-                model.forceWelcome = true
-                model.welcome = state
-                for mode in ["light", "dark"] {
-                    NSApp.appearance = NSAppearance(named: mode == "light" ? .aqua : .darkAqua)
-                    try? await Task.sleep(for: .seconds(0.8))
-                    capture(to: "\(dir)/\(name)-\(mode).png")
+            for (name, state) in welcomeStates {
+                await run.shoot(name, settle: .seconds(0.8)) {
+                    model.sidebar = .play
+                    model.forceWelcome = true
+                    model.welcome = state
                 }
             }
             model.forceWelcome = false
@@ -85,64 +60,46 @@ enum Snapshot {
             importFailed.failure = RandovaniaGame.Failure.notAnExport.message
             for (name, state) in [("install-progress", downloading), ("install-error", failed),
                                   ("install-mod", modding), ("install-mod-error", modFailed),
-                                  ("install-randovania", importing), ("install-randovania-error", importFailed)] where only?.contains(name) ?? true {
-                model.sidebar = .play
-                model.install = state
-                for mode in ["light", "dark"] {
-                    NSApp.appearance = NSAppearance(named: mode == "light" ? .aqua : .darkAqua)
-                    try? await Task.sleep(for: .seconds(0.8))
-                    capture(to: "\(dir)/\(name)-\(mode).png")
+                                  ("install-randovania", importing), ("install-randovania-error", importFailed)] {
+                await run.shoot(name, settle: .seconds(0.8)) {
+                    model.sidebar = .play
+                    model.install = state
                 }
             }
             model.install = nil
-            if only?.contains("play-mod") ?? true,
+            if run.wantsAny(["play-mod", "play-mod-full"]),
                let mod = ((try? model.container.mainContext.fetch(FetchDescriptor<Profile>())) ?? []).first(where: \.isMod) {
                 let saved = model.selection
                 model.sidebar = .play
                 model.selection = mod.id
-                for mode in ["light", "dark"] {
-                    NSApp.appearance = NSAppearance(named: mode == "light" ? .aqua : .darkAqua)
-                    try? await Task.sleep(for: .seconds(0.8))
-                    capture(to: "\(dir)/play-mod-\(mode).png")
-                }
-                // S-042: the whole page, down to the Engine section's note, in a tall window.
-                if only?.contains("play-mod-full") ?? true, let window = NSApp.windows.first(where: { $0.canBecomeMain && !$0.isSheet }) {
+                await run.shoot("play-mod", settle: .seconds(0.8))
+                // S-042: the whole page, down to the Engine section's note, in a tall window, in light only.
+                if run.wants("play-mod-full"), let window = WindowShot.mainWindow() {
                     let frame = window.frame
                     let tall = min(1500, (window.screen ?? NSScreen.main)?.visibleFrame.height ?? frame.height)
                     window.setFrame(NSRect(x: frame.minX, y: frame.maxY - tall, width: frame.width, height: tall), display: true)
-                    NSApp.appearance = NSAppearance(named: .aqua)
-                    try? await Task.sleep(for: .seconds(0.8))
-                    capture(to: "\(dir)/play-mod-full-light.png")
+                    Appearance.light.apply()
+                    await run.pause()
+                    await run.capture("play-mod-full", .light)
                     window.setFrame(frame, display: true)
                 }
                 model.selection = saved
             }
             // S-040: the whole Extras page, Randomizer and Save Slots included, in a window tall enough to hold it.
-            if only?.contains("extras-randomizer") ?? true,
-               let window = NSApp.windows.first(where: { $0.canBecomeMain && !$0.isSheet }) {
+            if run.wants("extras-randomizer"), let window = WindowShot.mainWindow() {
                 let frame = window.frame
                 let tall = min(1500, (window.screen ?? NSScreen.main)?.visibleFrame.height ?? frame.height)
                 window.setFrame(NSRect(x: frame.minX, y: frame.maxY - tall, width: frame.width, height: tall), display: true)
-                model.sidebar = .extras
-                for mode in ["light", "dark"] {
-                    NSApp.appearance = NSAppearance(named: mode == "light" ? .aqua : .darkAqua)
-                    try? await Task.sleep(for: .seconds(0.8))
-                    capture(to: "\(dir)/extras-randomizer-\(mode).png")
-                }
+                await run.shoot("extras-randomizer", settle: .seconds(0.8)) { model.sidebar = .extras }
                 window.setFrame(frame, display: true)
             }
-            if only?.contains("play-running") ?? true {
+            await run.shoot("play-running", settle: .seconds(0.8)) {
                 model.sidebar = .play
                 model.previewPlaying = true
-                for mode in ["light", "dark"] {
-                    NSApp.appearance = NSAppearance(named: mode == "light" ? .aqua : .darkAqua)
-                    try? await Task.sleep(for: .seconds(0.8))
-                    capture(to: "\(dir)/play-running-\(mode).png")
-                }
-                model.previewPlaying = false
             }
+            model.previewPlaying = false
             // S-023: saves-backups, the Saves Backups sheet with two backups.
-            if let profile = model.currentProfile, only?.contains("saves-backups") ?? true {
+            if let profile = model.currentProfile, run.wants("saves-backups") {
                 let saves = GameRunner.saveFolder(for: profile)
                 try? FileManager.default.createDirectory(at: saves, withIntermediateDirectories: true)
                 try? Data("slot 1".utf8).write(to: saves.appending(path: "save1"))
@@ -150,89 +107,54 @@ enum Snapshot {
                 _ = try? await SaveBackup.backup(saves: saves, into: folder, profileName: profile.name, date: .now.addingTimeInterval(-7 * 86_400))
                 _ = try? await SaveBackup.backup(saves: saves, into: folder, profileName: profile.name, label: "before restore")
                 model.sidebar = .profiles
-                for mode in ["light", "dark"] {
-                    NSApp.appearance = NSAppearance(named: mode == "light" ? .aqua : .darkAqua)
-                    model.backupsFor = profile
-                    try? await Task.sleep(for: .seconds(1))
-                    let main = NSApp.windows.first { $0.canBecomeMain && !$0.isSheet }
-                    capture(to: "\(dir)/saves-backups-\(mode).png", window: main?.attachedSheet)
-                    model.backupsFor = nil
-                    try? await Task.sleep(for: .seconds(0.5))
-                }
+                await run.shoot("saves-backups", window: { WindowShot.mainWindow()?.attachedSheet },
+                                show: { model.backupsFor = profile }, hide: { model.backupsFor = nil })
             }
-            // S-022: the delete dialog on the Profiles page.
-            if let profile = model.currentProfile, only?.contains("profiles-delete") ?? true {
-                model.sidebar = .profiles
-                for mode in ["light", "dark"] {
-                    NSApp.appearance = NSAppearance(named: mode == "light" ? .aqua : .darkAqua)
-                    model.deleteTarget = profile
-                    try? await Task.sleep(for: .seconds(1))
-                    let main = NSApp.windows.first { $0.canBecomeMain && !$0.isSheet }
-                    capture(to: "\(dir)/profiles-delete-\(mode).png", window: main, withSheet: true)
-                    model.deleteTarget = nil
-                    try? await Task.sleep(for: .seconds(0.5))
-                }
+            // S-022: the delete dialog on the Profiles page, its sheet over the window.
+            if let profile = model.currentProfile {
+                await run.shoot("profiles-delete", area: .screen,
+                                show: { model.sidebar = .profiles; model.deleteTarget = profile }, hide: { model.deleteTarget = nil })
             }
             // S-020: update-banner, a newer release than the seeded profile.
-            if only?.contains("update-banner") ?? true {
-                model.sidebar = .play
+            if run.wants("update-banner") {
                 let saved = model.latestUpdate
-                model.latestUpdate = UpdateCheck.Latest(manifest: PatchData.Manifest(commit: String(repeating: "6", count: 40), files: []),
-                                                        version: "1.5.6", checkedAt: .now)
-                for mode in ["light", "dark"] {
-                    NSApp.appearance = NSAppearance(named: mode == "light" ? .aqua : .darkAqua)
-                    try? await Task.sleep(for: .seconds(0.8))
-                    capture(to: "\(dir)/update-banner-\(mode).png")
+                await run.shoot("update-banner", settle: .seconds(0.8)) {
+                    model.sidebar = .play
+                    model.latestUpdate = UpdateCheck.Latest(manifest: PatchData.Manifest(commit: String(repeating: "6", count: 40), files: []),
+                                                            version: "1.5.6", checkedAt: .now)
                 }
                 model.latestUpdate = saved
             }
             // S-014: the engine picker when Rosetta isn't installed.
-            if only?.contains("play-no-rosetta") ?? true {
+            if run.wants("play-no-rosetta") {
                 model.sidebar = .play
                 let installed = model.rosettaInstalled
                 model.rosettaInstalled = false
                 // Tall enough to show the Engine section under the other settings.
-                let main = NSApp.windows.first { $0.canBecomeMain && !$0.isSheet }
+                let main = WindowShot.mainWindow()
                 let frame = main?.frame
                 if let main, let screen = main.screen?.visibleFrame {
                     main.setFrame(NSRect(x: main.frame.minX, y: screen.minY, width: main.frame.width, height: screen.height), display: true)
                 }
-                for mode in ["light", "dark"] {
-                    NSApp.appearance = NSAppearance(named: mode == "light" ? .aqua : .darkAqua)
-                    try? await Task.sleep(for: .seconds(0.8))
-                    capture(to: "\(dir)/play-no-rosetta-\(mode).png")
-                }
+                await run.shoot("play-no-rosetta", settle: .seconds(0.8))
                 model.rosettaInstalled = installed
                 if let main, let frame { main.setFrame(frame, display: true) }
             }
             // S-006: play-failed (banner) and log-sheet.
-            if let profile = model.currentProfile, only?.contains("play-failed") ?? true || only?.contains("log-sheet") ?? true {
+            if let profile = model.currentProfile, run.wantsAny(["play-failed", "log-sheet"]) {
                 let logs = GameRunner.logFolder(for: profile)
                 try? FileManager.default.createDirectory(at: logs, withIntermediateDirectories: true)
                 let log = logs.appending(path: "2026-11-03T10-00-00Z.log")
                 try? sampleLog.write(to: log, atomically: true, encoding: .utf8)
                 model.sidebar = .play
                 model.lastGameFailure = GameFailure(profile: profile.uuid, log: log, status: 1)
-                for mode in ["light", "dark"] {
-                    NSApp.appearance = NSAppearance(named: mode == "light" ? .aqua : .darkAqua)
-                    if only?.contains("play-failed") ?? true {
-                        try? await Task.sleep(for: .seconds(0.8))
-                        capture(to: "\(dir)/play-failed-\(mode).png")
-                    }
-                    if only?.contains("log-sheet") ?? true {
-                        model.showLog()
-                        try? await Task.sleep(for: .seconds(1))
-                        let main = NSApp.windows.first { $0.canBecomeMain && !$0.isSheet }
-                        capture(to: "\(dir)/log-sheet-\(mode).png", window: main?.attachedSheet)
-                        model.logSheet = nil
-                        try? await Task.sleep(for: .seconds(0.5))
-                    }
-                }
+                await run.shoot("play-failed", settle: .seconds(0.8))
+                await run.shoot("log-sheet", window: { WindowShot.mainWindow()?.attachedSheet },
+                                show: { model.showLog() }, hide: { model.logSheet = nil })
                 model.lastGameFailure = nil
             }
             // The Log page with sample entries: log-launcher, log-game and log-rooms (S-043).
-            if let profile = model.currentProfile, only?.contains("log-launcher") ?? true || only?.contains("log-game") ?? true
-                || only?.contains("log-rooms") ?? true || only?.contains("log-rooms-off") ?? true {
+            if let profile = model.currentProfile, run.wantsAny(DebugLogSource.allCases.map { "log-\($0.rawValue)" } + ["log-rooms-off"]) {
                 let saves = GameRunner.saveFolder(for: profile)
                 try? RoomLog.set(true, saves: saves)
                 try? sampleRoomLog.write(to: RoomLog.file(in: saves), atomically: true, encoding: .utf8)
@@ -241,46 +163,22 @@ enum Snapshot {
                 try? FileManager.default.createDirectory(at: logs, withIntermediateDirectories: true)
                 try? sampleGameLog.write(to: logs.appending(path: "2026-11-03T18-29-40.log"), atomically: true, encoding: .utf8)
                 model.sidebar = .log
-                for source in DebugLogSource.allCases where only?.contains("log-\(source.rawValue)") ?? true {
-                    model.debugLogSource = source
-                    for mode in ["light", "dark"] {
-                        NSApp.appearance = NSAppearance(named: mode == "light" ? .aqua : .darkAqua)
-                        try? await Task.sleep(for: .seconds(1.5))
-                        capture(to: "\(dir)/log-\(source.rawValue)-\(mode).png")
-                    }
+                for source in DebugLogSource.allCases {
+                    await run.shoot("log-\(source.rawValue)", settle: .seconds(1.5)) { model.debugLogSource = source }
                 }
-                if only?.contains("log-rooms-off") ?? true {
+                if run.wants("log-rooms-off") {
                     try? RoomLog.set(false, saves: saves)
                     model.debugLogSource = .game
                     try? await Task.sleep(for: .seconds(0.3))
                     model.debugLogSource = .rooms
-                    for mode in ["light", "dark"] {
-                        NSApp.appearance = NSAppearance(named: mode == "light" ? .aqua : .darkAqua)
-                        try? await Task.sleep(for: .seconds(1))
-                        capture(to: "\(dir)/log-rooms-off-\(mode).png")
-                    }
+                    await run.shoot("log-rooms-off")
                 }
                 model.debugLogSource = .launcher
                 model.sidebar = .play
             }
-            if only == nil || only?.contains("settings") == true {
-                let main = NSApp.windows.first { $0.canBecomeMain && !$0.isSheet }
-                openSettings()
-                try? await Task.sleep(for: .seconds(1))
-                for mode in ["light", "dark"] {
-                    NSApp.appearance = NSAppearance(named: mode == "light" ? .aqua : .darkAqua)
-                    for tab in SettingsTab.allCases {
-                        model.settingsTab = tab
-                        try? await Task.sleep(for: .seconds(0.8))
-                        let settings = NSApp.windows.first { $0.isVisible && $0 !== main && !$0.isSheet }
-                        capture(to: "\(dir)/settings-\(tab.rawValue)-\(mode).png", window: settings)
-                    }
-                }
-            }
-            print("SNAPSHOT done \(dir)")
-            // An open sheet refuses terminate, and the run would wait forever.
-            for window in NSApp.windows { if let sheet = window.attachedSheet { window.endSheet(sheet) } }
-            NSApp.terminate(nil)
+            await run.shootSettings(tabs: SettingsTab.allCases.map(\.rawValue), open: { openSettings() },
+                                    select: { model.settingsTab = SettingsTab(rawValue: $0)! })
+            run.finish()
         }
     }
 
@@ -335,51 +233,4 @@ enum Snapshot {
         November 18th 2026, 14:05.12: Loading Room 4
 
         """
-
-    /// Captures the real window with screencapture, so glass, sidebars, and
-    /// materials look exactly as on screen. That needs Screen Recording
-    /// permission for the app that started this one (your terminal, or Claude).
-    /// Without it, falls back to drawing the view hierarchy, which leaves
-    /// sidebars and glass blank.
-    /// `withSheet` captures the window's area of the screen, so an alert sheet on it shows too.
-    private static func capture(to path: String, window: NSWindow? = nil, withSheet: Bool = false) {
-        // Another app can hide this one while snapshots run (computer use hides
-        // apps it does not control). Hidden windows cannot be captured.
-        if NSApp.isHidden { NSApp.unhideWithoutActivation() }
-        guard let window = window ?? NSApp.windows.first(where: { $0.canBecomeMain && !$0.isSheet }) else {
-            print("SNAPSHOT no window")
-            return
-        }
-        // Active, like a window someone is using: real accent colors and focus rings.
-        NSApp.activate()
-        window.makeKeyAndOrderFront(nil)
-        let size = window.contentView?.bounds.size ?? .zero
-        GridProbes.shared.write(to: path.replacingOccurrences(of: ".png", with: "-layout.json"), window: size)
-        try? FileManager.default.removeItem(atPath: path)
-        // The first capture of a run sometimes misses the window. Try three times.
-        for _ in 1...3 {
-            let shot = Process()
-            shot.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
-            if withSheet, let screen = NSScreen.screens.first {
-                let f = window.frame
-                shot.arguments = ["-x", "-R", "\(Int(f.minX)),\(Int(screen.frame.maxY - f.maxY)),\(Int(f.width)),\(Int(f.height))", path]
-            } else {
-                shot.arguments = ["-x", "-o", "-l", String(window.windowNumber), path]
-            }
-            try? shot.run()
-            shot.waitUntilExit()
-            if FileManager.default.fileExists(atPath: path) {
-                print("SNAPSHOT \(path)")
-                return
-            }
-            Thread.sleep(forTimeInterval: 0.5)
-        }
-        guard let view = window.contentView?.superview ?? window.contentView,
-              let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
-        view.cacheDisplay(in: view.bounds, to: rep)
-        if let data = rep.representation(using: .png, properties: [:]) {
-            try? data.write(to: URL(fileURLWithPath: path))
-            print("SNAPSHOT \(path) (fallback: no Screen Recording permission, sidebars and glass are blank)")
-        }
-    }
 }

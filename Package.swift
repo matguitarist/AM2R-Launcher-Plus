@@ -15,6 +15,8 @@ let package = Package(
         .package(url: "https://github.com/matguitarist/ArchiveKit", from: "0.1.1"),
         // Moving the data folder to another disk without losing a file; shared by my Mac apps.
         .package(url: "https://github.com/matguitarist/FileKit", from: "0.1.0"),
+        // The self-test's lines and the snapshots' captures, shared by my Mac apps.
+        .package(url: "https://github.com/matguitarist/AppTestKit", from: "0.1.0"),
     ],
     targets: [
         // Rules and data logic with no SwiftUI, so tests run without the app.
@@ -23,7 +25,8 @@ let package = Package(
         .executableTarget(
             name: "AM2RLauncherPlus",
             dependencies: ["AM2RLauncherPlusKit", .product(name: "Sparkle", package: "Sparkle"),
-                           .product(name: "LogKitUI", package: "LogKit"), .product(name: "ProcessKit", package: "ProcessKit"), .product(name: "FileKit", package: "FileKit")],
+                           .product(name: "LogKitUI", package: "LogKit"), .product(name: "ProcessKit", package: "ProcessKit"), .product(name: "FileKit", package: "FileKit"),
+                           .product(name: "AppTestKit", package: "AppTestKit")],
             // The Play page's header: an in-game screenshot of AM2R (README, Credits).
             resources: [.copy("Resources/Header.heic")],
             // App code runs on the main thread unless you say otherwise.
