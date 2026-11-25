@@ -29,23 +29,17 @@ struct AM2RLauncherPlusApp: App {
         .defaultSize(width: 1100, height: 720)
         .windowToolbarStyle(.unified)
         .commands {
-            CommandGroup(after: .appInfo) {
-                Button("Check for Updates…") { LauncherUpdater.shared.checkForUpdates() }
-                    .disabled(!LauncherUpdater.shared.canCheck)
-            }
+            StandardCommands(app: "AM2R Launcher Plus", repository: "matguitarist/AM2R-Launcher-Plus",
+                             updates: AppUpdates(isAvailable: LauncherUpdater.shared.canCheck) { LauncherUpdater.shared.checkForUpdates() },
+                             log: .page { model.sidebar = .log },
+                             logShortcut: KeyboardShortcut("l", modifiers: [.command, .option]))
             SidebarCommands()
             ToolbarCommands()
             CommandGroup(replacing: .newItem) {
                 Button("Choose AM2R 1.1…") { model.showChooser = true }
                     .keyboardShortcut("o")
             }
-            CommandGroup(before: .sidebar) {
-                ForEach(Array(SidebarItem.allCases.enumerated()), id: \.element) { index, page in
-                    Button(page.title) { model.sidebar = page }
-                        .keyboardShortcut(KeyEquivalent(Character(String(index + 1))))
-                }
-                Divider()
-            }
+            PageCommands(pages: SidebarItem.allCases, title: \.title) { model.sidebar = $0 }
             CommandMenu("Profile") {
                 Button("Install Mod…") { model.showModChooser = true }
                     .keyboardShortcut("o", modifiers: [.command, .option])
@@ -121,11 +115,10 @@ struct AM2RLauncherPlusApp: App {
                 }
                 .disabled(model.currentProfile == nil)
                 Divider()
-                Button("Show Log") { model.showLog() }
+                // The launcher's own log is Help › Show Log (⌥⌘L).
+                Button("Show Game Log") { model.showLog() }
                     .keyboardShortcut("l")
                     .disabled(model.currentLog == nil)
-                Button("Debug Log") { model.sidebar = .log }
-                    .keyboardShortcut("l", modifiers: [.command, .option])
             }
         }
 

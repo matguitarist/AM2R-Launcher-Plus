@@ -22,6 +22,9 @@ extension SelfTest {
             check("the new profile is selected", model.selection == profile.id)
             check("profile names are cleaned", profile.name == "Community Updates 1.5.5")
             check("new profiles use the native engine", profile.engine == .native)
+            let issue = RepositoryLinks(repository: "matguitarist/AM2R-Launcher-Plus").newIssue(app: "AM2R Launcher Plus").absoluteString
+            check("Help › Report a Problem opens a new GitHub issue with the version and macOS filled in",
+                  issue.hasPrefix("https://github.com/matguitarist/AM2R-Launcher-Plus/issues/new?body=") && issue.contains("macOS"), issue)
             context.delete(profile)
             try? context.save()
             check("deleting the profile removes it", profiles().count == before)
