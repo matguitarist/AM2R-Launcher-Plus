@@ -87,7 +87,7 @@ final class GameRunner {
             }
             // The game's output goes to the log through open's --stdout and --stderr.
             arguments = RosettaApp.openArguments(app: app, log: log)
-            options = Shell.Options(stdout: .discard, stderr: .discard)
+            options = Shell.Options(stdout: .discard, stderr: .discard, returnsOutputWhenCancelled: true)
         } else {
             arguments = extraArguments + ["--save-folder", saves.path, game.path]
             var environment = ProcessInfo.processInfo.environment
@@ -95,16 +95,17 @@ final class GameRunner {
             environment["BUTTERSCOTCH_GAMEPAD_KEYS"] = gamepadKeys
             environment.merge(extra) { _, new in new }
             options = Shell.Options(directory: profile.folder, environment: environment, inheritsEnvironment: false,
-                                    stdout: .file(log), stderr: .merged)
+                                    stdout: .file(log), stderr: .merged, returnsOutputWhenCancelled: true)
         }
         task = Task { [weak self] in
             do {
                 let output = try await Shell.run(tool, arguments, options: options)
                 self?.isRunning = false
-                // A signal reads as its number, as before: 15 for SIGTERM, 11 for a crash.
+                // A signal reads as its number: 15 for SIGTERM, 11 for a crash. Stop sends SIGTERM (SIGKILL
+                // 3 s later) and returns here too, with the signal that really ended the engine.
                 onExit(output.signal ?? output.status)
             } catch is CancellationError {
-                // Stop: the engine got SIGTERM (SIGKILL 3 s later) and has ended.
+                // Stopped before the engine had started.
                 self?.isRunning = false
                 onExit(SIGTERM)
             } catch {
