@@ -3,6 +3,7 @@ import Foundation
 import GameController
 import SwiftData
 import AM2RLauncherPlusKit
+import FileKit
 import LogKit
 import ProcessKit
 

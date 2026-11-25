@@ -1,36 +1,18 @@
+import FileKit
 import Foundation
 import Testing
 @testable import AM2RLauncherPlusKit
 
+/// The move itself is FileKit's, tested there. These check what is the launcher's own: its database staying in
+/// the default data folder, and its words.
 struct FolderMoveTests {
-    func makeData() throws -> (root: URL, data: URL) {
-        let root = FileManager.default.temporaryDirectory.appending(path: "move-\(UUID().uuidString)", directoryHint: .isDirectory)
-        let data = root.appending(path: "AM2RLauncherPlus", directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: data.appending(path: "Profiles/A/lang"), withIntermediateDirectories: true)
-        try FileManager.default.createDirectory(at: data.appending(path: "Saves/A"), withIntermediateDirectories: true)
-        try Data(count: 5000).write(to: data.appending(path: "Profiles/A/game.ios"))
-        try Data("english.ini".utf8).write(to: data.appending(path: "Profiles/A/lang/languages.txt"))
-        try Data("x".utf8).write(to: data.appending(path: "Saves/A/save1"))
-        return (root, data)
-    }
-
-    @Test func movesEverythingAndRemovesTheOldFolder() throws {
-        let (root, data) = try makeData()
-        defer { try? FileManager.default.removeItem(at: root) }
-        let before = FolderMove.listFiles(in: data)
-        let target = root.appending(path: "External", directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
-        let moved = try FolderMove.move(data, into: target)
-        #expect(moved.lastPathComponent == "AM2RLauncherPlus")
-        #expect(FolderMove.listFiles(in: moved) == before)
-        #expect(!FileManager.default.fileExists(atPath: data.path))
-        #expect(FolderMove.size(of: moved) == 5000 + 11 + 1)
-    }
-
     /// The default data folder is also where the database lives (~/Library/Application Support/AM2RLauncherPlus).
     @Test func movingTheDefaultDataFolderLeavesTheDatabaseWhereItIs() throws {
-        let (root, data) = try makeData()
+        let root = FileManager.default.temporaryDirectory.appending(path: "move-\(UUID().uuidString)", directoryHint: .isDirectory)
         defer { try? FileManager.default.removeItem(at: root) }
+        let data = root.appending(path: "AM2RLauncherPlus", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: data.appending(path: "Saves/A"), withIntermediateDirectories: true)
+        try Data("x".utf8).write(to: data.appending(path: "Saves/A/save1"))
         let store = data.appending(path: "AM2RLauncherPlus.store")
         try Data("db".utf8).write(to: store)
         let target = root.appending(path: "External", directoryHint: .isDirectory)
@@ -43,51 +25,12 @@ struct FolderMoveTests {
         #expect(FileManager.default.fileExists(atPath: moved.appending(path: "Saves/A/save1").path))
     }
 
-    /// Moving back home: the default folder still exists, holding the database.
-    @Test func movesBackIntoTheFolderThatKeptTheDatabase() throws {
-        let (root, data) = try makeData()
-        defer { try? FileManager.default.removeItem(at: root) }
-        let store = data.appending(path: "AM2RLauncherPlus.store")
-        try Data("db".utf8).write(to: store)
-        let keeping = FolderMove.databaseFiles(store: store, in: data)
-        let before = FolderMove.listFiles(in: data)
-        let target = root.appending(path: "External", directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
-        let moved = try FolderMove.move(data, into: target, keeping: keeping)
-        let back = try FolderMove.move(moved, into: root, keeping: FolderMove.databaseFiles(store: store, in: moved))
-        #expect(back.path == data.resolvingSymlinksInPath().path)
-        #expect(FolderMove.listFiles(in: back) == before)
-        #expect(!FileManager.default.fileExists(atPath: moved.path))
-    }
-
-    @Test func refusesAFolderThatAlreadyHasOne() throws {
-        let (root, data) = try makeData()
-        defer { try? FileManager.default.removeItem(at: root) }
-        let target = root.appending(path: "Busy", directoryHint: .isDirectory)
-        // An existing AM2RLauncherPlus folder is fine (moving back home); one that already has saves isn't.
-        try FileManager.default.createDirectory(at: target.appending(path: "AM2RLauncherPlus/Saves"), withIntermediateDirectories: true)
-        #expect(throws: FolderMove.Failure.destinationExists("AM2RLauncherPlus/Saves")) { try FolderMove.move(data, into: target) }
-        #expect(FolderMove.listFiles(in: data).count == 3)
-    }
-
-    @Test func refusesToMoveIntoItself() throws {
-        let (root, data) = try makeData()
-        defer { try? FileManager.default.removeItem(at: root) }
-        #expect(throws: FolderMove.Failure.insideItself) { try FolderMove.move(data, into: data.appending(path: "Saves")) }
-    }
-
-    /// Another disk: set MOVE_VOLUME=/Volumes/<disk> to run the copy-verify-delete path for real.
-    @Test func movesToAnotherDisk() throws {
-        guard let volume = ProcessInfo.processInfo.environment["MOVE_VOLUME"] else { return }
-        let (root, data) = try makeData()
-        defer { try? FileManager.default.removeItem(at: root) }
-        let target = URL(fileURLWithPath: volume).appending(path: "move-test-\(UUID().uuidString)", directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: target) }
-        let before = FolderMove.listFiles(in: data)
-        let moved = try FolderMove.move(data, into: target)
-        #expect(FolderMove.listFiles(in: moved) == before)
-        #expect(!FileManager.default.fileExists(atPath: data.path))
-        #expect(!FileManager.default.fileExists(atPath: target.appending(path: "AM2RLauncherPlus.partial").path))
+    @Test func failuresSayWhatHappened() {
+        #expect(FolderMove.Failure.destinationExists("AM2RLauncherPlus/Saves").message
+                == "That folder already has an item named “AM2RLauncherPlus/Saves”. Choose another folder.")
+        #expect(FolderMove.Failure.insideItself.message == "Choose a folder outside the current data folder.")
+        #expect(FolderMove.Failure.copyFailed("disk full").message == "Unable to copy the data. The old folder is unchanged.")
+        #expect(FolderMove.Failure.verifyFailed("Saves/A/save1").message == "The copy doesn't match the original (Saves/A/save1). The old folder is unchanged.")
+        #expect(FolderMove.Failure.notEnoughSpace(needed: 2_000_000, available: 1_000_000).message.hasPrefix("Not enough space: the data needs "))
     }
 }

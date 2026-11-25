@@ -1,5 +1,6 @@
 import AM2RLauncherPlusKit
 import AppKit
+import FileKit
 import SwiftUI
 
 /// The Settings window (Command-Comma). One tab per topic, at most about
