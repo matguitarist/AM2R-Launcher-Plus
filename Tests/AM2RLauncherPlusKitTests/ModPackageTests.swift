@@ -1,4 +1,5 @@
 import Foundation
+import ProcessKit
 import Testing
 @testable import AM2RLauncherPlusKit
 
@@ -30,12 +31,7 @@ private struct Mods {
         let source = dir.appending(path: name + "-src", directoryHint: .isDirectory)
         try write(files, in: source)
         let zip = dir.appending(path: name + ".zip")
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/zip")
-        process.currentDirectoryURL = source
-        process.arguments = ["-qr", zip.path, "."]
-        try process.run()
-        process.waitUntilExit()
+        _ = try Shell.runSync("/usr/bin/zip", ["-qr", zip.path, "."], in: source)
         return zip
     }
 }
@@ -103,11 +99,7 @@ func buildsAProfileFromAMod() throws {
     let target = mods.dir.appending(path: "target")
     try Data(("MODDED " + String(repeating: "original game ", count: 190)).utf8).write(to: target)
     let delta = mods.dir.appending(path: "data.xdelta")
-    let process = Process()
-    process.executableURL = URL(fileURLWithPath: xdelta3!)
-    process.arguments = ["-e", "-f", "-S", "lzma", "-s", game.appending(path: "data.win").path, target.path, delta.path]
-    try process.run()
-    process.waitUntilExit()
+    _ = try Shell.runSync(xdelta3!, ["-e", "-f", "-S", "lzma", "-s", game.appending(path: "data.win").path, target.path, delta.path])
     let zip = try mods.zip("real", data: ["My Mod/profile.xml": Data(Mods.profile().utf8), "My Mod/data.xdelta": try Data(contentsOf: delta),
                                           "My Mod/files_to_copy/musTitle.ogg": Data("mod title".utf8)])
 

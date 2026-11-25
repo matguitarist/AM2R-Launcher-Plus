@@ -1,4 +1,5 @@
 import Foundation
+import ProcessKit
 import Testing
 @testable import AM2RLauncherPlusKit
 
@@ -51,11 +52,7 @@ private func read(_ url: URL) -> String? { try? String(contentsOf: url, encoding
     try FileManager.default.createDirectory(at: original, withIntermediateDirectories: true)
     try write("old mac save", original.appending(path: "save1"))
     let zip = dir.appending(path: "saves.zip")
-    let ditto = Process()
-    ditto.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
-    ditto.arguments = ["-c", "-k", "--keepParent", original.path, zip.path]
-    try ditto.run()
-    ditto.waitUntilExit()
+    _ = try Shell.runSync("/usr/bin/ditto", ["-c", "-k", "--keepParent", original.path, zip.path])
     let saves = try folder("Saves/two")
     try SaveBackup.restore(zip, into: saves)
     #expect(read(saves.appending(path: "save1")) == "old mac save")
@@ -65,11 +62,7 @@ private func read(_ url: URL) -> String? { try? String(contentsOf: url, encoding
     let dir = try folder("other")
     try write("hello", dir.appending(path: "notes.txt"))
     let zip = dir.deletingLastPathComponent().appending(path: "notes.zip")
-    let ditto = Process()
-    ditto.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
-    ditto.arguments = ["-c", "-k", dir.path, zip.path]
-    try ditto.run()
-    ditto.waitUntilExit()
+    _ = try Shell.runSync("/usr/bin/ditto", ["-c", "-k", dir.path, zip.path])
     let saves = try folder("Saves/three")
     try write("keep", saves.appending(path: "save1"))
     #expect(throws: SaveBackup.Failure.notABackup) { try SaveBackup.restore(zip, into: saves) }

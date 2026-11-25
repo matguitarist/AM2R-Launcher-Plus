@@ -1,4 +1,5 @@
 import Foundation
+import ProcessKit
 import Testing
 @testable import AM2RLauncherPlusKit
 
@@ -34,12 +35,8 @@ private struct Setup {
         try write(other, String(repeating: "a different game build ", count: 200))
         let target = dir.appending(path: "target")
         try write(target, "PATCHED " + String(repeating: validPatch ? "original game " : "a different game build ", count: 190))
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: xdelta3!)
         let source = validPatch ? game.appending(path: "data.win") : other
-        process.arguments = ["-e", "-f", "-S", "lzma", "-s", source.path, target.path, patch.appending(path: "data/game.xdelta").path]
-        try process.run()
-        process.waitUntilExit()
+        _ = try Shell.runSync(xdelta3!, ["-e", "-f", "-S", "lzma", "-s", source.path, target.path, patch.appending(path: "data/game.xdelta").path])
     }
 }
 
@@ -65,12 +62,7 @@ func buildsAProfileFromAFolder() throws {
 func buildsAProfileFromANestedZip() throws {
     let setup = try Setup()
     let zip = setup.dir.appending(path: "AM2R_11.zip")
-    let process = Process()
-    process.executableURL = URL(fileURLWithPath: "/usr/bin/zip")
-    process.currentDirectoryURL = setup.dir
-    process.arguments = ["-qr", zip.path, "AM2R_11"]
-    try process.run()
-    process.waitUntilExit()
+    _ = try Shell.runSync("/usr/bin/zip", ["-qr", zip.path, "AM2R_11"], in: setup.dir)
     let result = try ProfileBuilder.build(source: zip, kind: .zip, root: "AM2R_11/", patchData: setup.patch, destination: setup.destination)
     #expect((try? String(contentsOf: result.folder.appending(path: "game.ios"), encoding: .utf8))?.hasPrefix("PATCHED ") == true)
     #expect(FileManager.default.fileExists(atPath: result.folder.appending(path: "musarea1a.ogg").path))
@@ -81,12 +73,7 @@ func buildsAProfileFromA7z(nested: Bool) throws {
     let setup = try Setup()
     let archive = setup.dir.appending(path: "AM2R_11.7z")
     let names = try FileManager.default.contentsOfDirectory(atPath: setup.game.path)
-    let process = Process()
-    process.executableURL = URL(fileURLWithPath: "/usr/bin/tar")
-    process.currentDirectoryURL = nested ? setup.dir : setup.game
-    process.arguments = ["--format", "7zip", "-cf", archive.path] + (nested ? ["AM2R_11"] : names)
-    try process.run()
-    process.waitUntilExit()
+    _ = try Shell.runSync("/usr/bin/tar", ["--format", "7zip", "-cf", archive.path] + (nested ? ["AM2R_11"] : names), in: nested ? setup.dir : setup.game)
     let result = try ProfileBuilder.build(source: archive, kind: .sevenZip, root: nested ? "AM2R_11/" : "", patchData: setup.patch, destination: setup.destination)
     #expect((try? String(contentsOf: result.folder.appending(path: "game.ios"), encoding: .utf8))?.hasPrefix("PATCHED ") == true)
     #expect(FileManager.default.fileExists(atPath: result.folder.appending(path: "musarea1a.ogg").path))

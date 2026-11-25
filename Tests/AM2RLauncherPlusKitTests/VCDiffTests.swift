@@ -1,4 +1,5 @@
 import Foundation
+import ProcessKit
 import Testing
 @testable import AM2RLauncherPlusKit
 
@@ -11,11 +12,7 @@ private func encode(source: Data, target: Data, flags: [String]) throws -> Data 
     let s = dir.appending(path: "source"), t = dir.appending(path: "target"), p = dir.appending(path: "patch")
     try source.write(to: s)
     try target.write(to: t)
-    let process = Process()
-    process.executableURL = URL(fileURLWithPath: xdelta3!)
-    process.arguments = ["-e", "-f"] + flags + ["-s", s.path, t.path, p.path]
-    try process.run()
-    process.waitUntilExit()
+    _ = try Shell.runSync(xdelta3!, ["-e", "-f"] + flags + ["-s", s.path, t.path, p.path])
     return try Data(contentsOf: p)
 }
 

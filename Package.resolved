@@ -1,5 +1,5 @@
 {
-  "originHash" : "91960b4403176d5bd8e2b41a6812971f23042fd80b61c20e1119e8031a8008b4",
+  "originHash" : "7a536f660d0b656b5603d3ee87b55b6f4113f412e462d63d2f51deb3e72e0954",
   "pins" : [
     {
       "identity" : "logkit",
@@ -8,6 +8,15 @@
       "state" : {
         "revision" : "0f7ee59ae05dc81eed6bef56b4d910fd8b83e97f",
         "version" : "0.6.0"
+      }
+    },
+    {
+      "identity" : "processkit",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/matguitarist/ProcessKit",
+      "state" : {
+        "revision" : "2da7146ec25ef252aa4dfec353cfc5ad86772d3f",
+        "version" : "0.1.1"
       }
     },
     {

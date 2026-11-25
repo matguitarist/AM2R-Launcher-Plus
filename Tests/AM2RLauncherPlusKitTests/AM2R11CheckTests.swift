@@ -1,4 +1,5 @@
 import Foundation
+import ProcessKit
 import Testing
 @testable import AM2RLauncherPlusKit
 
@@ -21,12 +22,7 @@ private struct Fixture {
     func zip(_ name: String, files: [String: String]) -> URL {
         let source = folder(name + "-src", files: files)
         let zip = dir.appending(path: name + ".zip")
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/zip")
-        process.currentDirectoryURL = source
-        process.arguments = ["-qr", zip.path, "."]
-        try? process.run()
-        process.waitUntilExit()
+        _ = try? Shell.runSync("/usr/bin/zip", ["-qr", zip.path, "."], in: source)
         return zip
     }
 
@@ -34,12 +30,7 @@ private struct Fixture {
     func sevenZip(_ name: String, files: [String: String]) -> URL {
         let source = folder(name + "-src", files: files)
         let archive = dir.appending(path: name + ".7z")
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/tar")
-        process.currentDirectoryURL = source
-        process.arguments = ["--format", "7zip", "-cf", archive.path] + files.keys.sorted()
-        try? process.run()
-        process.waitUntilExit()
+        _ = try? Shell.runSync("/usr/bin/tar", ["--format", "7zip", "-cf", archive.path] + files.keys.sorted(), in: source)
         return archive
     }
 }

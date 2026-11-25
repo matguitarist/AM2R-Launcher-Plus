@@ -4,6 +4,7 @@ import GameController
 import SwiftData
 import AM2RLauncherPlusKit
 import LogKit
+import ProcessKit
 
 /// What runs the game. See docs/GLOSSARY.md: "Native" and "Rosetta".
 enum Engine: String, Codable, CaseIterable, Identifiable {
@@ -691,9 +692,13 @@ final class AppModel {
             game = try GameRunner(profile: profile, extraArguments: extraArguments,
                                   // Until a mod writes its config.ini, it plays with its own layout.
                                   gamepadKeys: canWrite ? settings.controller.engineKeys : nil,
-                                  environment: profile.displayFilter.engineEnvironment) { [weak self] status in
-                self?.gameEnded(status: status)
-            }
+                                  environment: profile.displayFilter.engineEnvironment,
+                                  onExit: { [weak self] status in self?.gameEnded(status: status) },
+                                  onStartFailure: { [weak self] error in
+                                      log(.error, "Play", error.message)
+                                      self?.playError = error.message
+                                      self?.game = nil
+                                  })
         } catch {
             log(.error, "Play", error.message)
             playError = error.message
@@ -980,18 +985,9 @@ final class AppModel {
         guard !installingRosetta else { return }
         installingRosetta = true
         rosettaInstallError = nil
-        let output = await Task.detached { () -> String in
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-            process.arguments = ["-e", #"do shell script "/usr/sbin/softwareupdate --install-rosetta --agree-to-license" with administrator privileges"#]
-            let pipe = Pipe()
-            process.standardOutput = pipe
-            process.standardError = pipe
-            guard (try? process.run()) != nil else { return "" }
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            process.waitUntilExit()
-            return String(decoding: data, as: UTF8.self)
-        }.value
+        let output = (try? await Shell.run("/usr/bin/osascript",
+                                           ["-e", #"do shell script "/usr/sbin/softwareupdate --install-rosetta --agree-to-license" with administrator privileges"#],
+                                           options: Shell.Options(stderr: .merged)))?.text ?? ""
         installingRosetta = false
         rosettaInstalled = Rosetta.isInstalled
         // -128: the person cancelled the password prompt.

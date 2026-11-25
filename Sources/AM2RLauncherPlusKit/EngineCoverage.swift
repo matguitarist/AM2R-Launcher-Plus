@@ -1,4 +1,5 @@
 import Foundation
+import ProcessKit
 
 /// Which GameMaker functions a game calls that the native engine doesn't have (S-042), told by the
 /// engine itself: `butterscotch --headless --print-unknown-functions game.ios` lists them as "- name".
@@ -29,17 +30,14 @@ public enum EngineCoverage {
 
     /// Asks the engine. Takes a fraction of a second: the game data is loaded, nothing runs.
     public static func missing(game: URL, engine: URL) throws(Failure) -> [String] {
-        let process = Process()
-        process.executableURL = engine
-        process.arguments = ["--headless", "--disable-log-colours", "--print-unknown-functions", game.lastPathComponent]
-        process.currentDirectoryURL = game.deletingLastPathComponent()
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = pipe
-        do { try process.run() } catch { throw .couldNotRun(error.localizedDescription) }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        let report = String(decoding: data, as: UTF8.self)
+        let output: Shell.Output
+        do {
+            output = try Shell.runSync(engine.path, ["--headless", "--disable-log-colours", "--print-unknown-functions", game.lastPathComponent],
+                                       options: Shell.Options(directory: game.deletingLastPathComponent(), stderr: .merged))
+        } catch {
+            throw .couldNotRun(error.localizedDescription)
+        }
+        let report = output.text
         guard report.contains("Unknown Functions:") else { throw .noReport }
         return missing(inReport: report)
     }

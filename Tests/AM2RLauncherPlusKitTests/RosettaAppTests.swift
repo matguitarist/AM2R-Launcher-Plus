@@ -1,4 +1,5 @@
 import Foundation
+import ProcessKit
 import Testing
 @testable import AM2RLauncherPlusKit
 
@@ -32,11 +33,7 @@ private struct RosettaSetup {
         let source = dir.appending(path: "exe"), target = dir.appending(path: "runner")
         try write(source, exe)
         try write(target, "RUNNER " + String(repeating: "windows runner ", count: 190))
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: xdelta3!)
-        process.arguments = ["-e", "-f", "-S", "lzma", "-s", source.path, target.path, patch.appending(path: "data/AM2R.xdelta").path]
-        try process.run()
-        process.waitUntilExit()
+        try Shell.runSync(xdelta3!, ["-e", "-f", "-S", "lzma", "-s", source.path, target.path, patch.appending(path: "data/AM2R.xdelta").path]).check()
     }
 }
 
@@ -70,12 +67,7 @@ func buildsTheRosettaApp() throws {
 func buildsTheRosettaAppFromAZip() throws {
     let setup = try RosettaSetup()
     let zip = setup.dir.appending(path: "AM2R_11.zip")
-    let process = Process()
-    process.executableURL = URL(fileURLWithPath: "/usr/bin/zip")
-    process.currentDirectoryURL = setup.dir
-    process.arguments = ["-qr", zip.path, "AM2R_11"]
-    try process.run()
-    process.waitUntilExit()
+    _ = try Shell.runSync("/usr/bin/zip", ["-qr", zip.path, "AM2R_11"], in: setup.dir)
     let app = try RosettaApp.build(source: zip, kind: .zip, root: "AM2R_11/", patchData: setup.patch,
                                    profileFolder: setup.profile, bundleIdentifier: setup.id, sign: false)
     #expect((try? String(contentsOf: app.appending(path: "Contents/MacOS/Mac_Runner"), encoding: .utf8))?.hasPrefix("RUNNER ") == true)
@@ -85,12 +77,7 @@ func buildsTheRosettaAppFromAZip() throws {
 func buildsTheRosettaAppFromA7z() throws {
     let setup = try RosettaSetup()
     let archive = setup.dir.appending(path: "AM2R_11.7z")
-    let process = Process()
-    process.executableURL = URL(fileURLWithPath: "/usr/bin/tar")
-    process.currentDirectoryURL = setup.dir
-    process.arguments = ["--format", "7zip", "-cf", archive.path, "AM2R_11"]
-    try process.run()
-    process.waitUntilExit()
+    _ = try Shell.runSync("/usr/bin/tar", ["--format", "7zip", "-cf", archive.path, "AM2R_11"], in: setup.dir)
     let app = try RosettaApp.build(source: archive, kind: .sevenZip, root: "AM2R_11/", patchData: setup.patch,
                                    profileFolder: setup.profile, bundleIdentifier: setup.id, sign: false)
     #expect((try? String(contentsOf: app.appending(path: "Contents/MacOS/Mac_Runner"), encoding: .utf8))?.hasPrefix("RUNNER ") == true)
@@ -136,18 +123,6 @@ func buildsTheRealRosettaApp() throws {
     let app = try RosettaApp.build(source: copy.url, kind: copy.kind, root: copy.root, patchData: URL(fileURLWithPath: env["PATCH_DATA"]!),
                                    profileFolder: profile, bundleIdentifier: "com.yoyogames.am2r.profile-test")
     #expect(AM2R11.md5(of: app.appending(path: "Contents/Resources/game.ios")) == "0de029951c94b04545c9c257053ad712")
-    let file = Process()
-    file.executableURL = URL(fileURLWithPath: "/usr/bin/file")
-    file.arguments = [app.appending(path: "Contents/MacOS/Mac_Runner").path]
-    let pipe = Pipe()
-    file.standardOutput = pipe
-    try file.run()
-    file.waitUntilExit()
-    #expect(String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self).contains("x86_64"))
-    let verify = Process()
-    verify.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
-    verify.arguments = ["--verify", app.path]
-    try verify.run()
-    verify.waitUntilExit()
-    #expect(verify.terminationStatus == 0)
+    #expect(try Shell.runSync("/usr/bin/file", [app.appending(path: "Contents/MacOS/Mac_Runner").path]).text.contains("x86_64"))
+    #expect(try Shell.runSync("/usr/bin/codesign", ["--verify", app.path]).succeeded)
 }

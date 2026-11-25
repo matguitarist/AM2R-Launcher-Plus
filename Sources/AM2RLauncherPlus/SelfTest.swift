@@ -1,5 +1,6 @@
 import AM2RLauncherPlusKit
 import AppKit
+import ProcessKit
 import SwiftData
 
 /// Self-test for agents: runs the app's real functions on a test store,
@@ -432,7 +433,7 @@ enum SelfTest {
                         // S-033: a mod zip built from the same patch, the way the mod packer writes it.
                         let patchFolder = DataFolder.patchData.appending(path: installed.patchCommit, directoryHint: .isDirectory)
                         let modProfile = #"<message XMLVersion="1" OperatingSystem="Linux" Version="2.0" Name="Self-Test Mod" Author="Self &amp; Test" UsesYYC="False" />"#
-                        let modZip = makeZip("Self-Test Mod", files: ["profile.xml": Data(modProfile.utf8)],
+                        let modZip = await makeZip("Self-Test Mod", files: ["profile.xml": Data(modProfile.utf8)],
                                              copying: ["game.xdelta": patchFolder.appending(path: "data/game.xdelta"),
                                                        "files_to_copy": patchFolder.appending(path: "data/files_to_copy")])
                         let before = profiles().count
@@ -470,7 +471,7 @@ enum SelfTest {
                             context.delete(mod)
                             try? context.save()
                         }
-                        let yyc = makeZip("Fast Mod", files: ["profile.xml": Data(#"<message Version="1.0" Name="Fast Mod" UsesYYC="True" />"#.utf8),
+                        let yyc = await makeZip("Fast Mod", files: ["profile.xml": Data(#"<message Version="1.0" Name="Fast Mod" UsesYYC="True" />"#.utf8),
                                                               "AM2R.xdelta": Data("runner".utf8)], copying: [:])
                         model.startModInstall(zip: yyc)
                         for _ in 0..<100 where model.install?.failure == nil { try? await Task.sleep(for: .milliseconds(100)) }
@@ -484,12 +485,8 @@ enum SelfTest {
                            let xdelta = ["/opt/homebrew/bin/xdelta3", "/usr/local/bin/xdelta3"].first(where: FileManager.default.isExecutableFile) {
                             let dataWin = URL(fileURLWithPath: real).appending(path: "data.win")
                             let delta = FileManager.default.temporaryDirectory.appending(path: "old-mod-\(UUID().uuidString).xdelta")
-                            let encode = Process()
-                            encode.executableURL = URL(fileURLWithPath: xdelta)
-                            encode.arguments = ["-e", "-f", "-s", dataWin.path, dataWin.path, delta.path]
-                            try? encode.run()
-                            encode.waitUntilExit()
-                            let oldMod = makeZip("Old Mod", files: ["profile.xml": Data(#"<message Version="1.0" Name="Old Mod" OperatingSystem="Windows" UsesYYC="False" />"#.utf8)],
+                            _ = try? await Shell.run(xdelta, ["-e", "-f", "-s", dataWin.path, dataWin.path, delta.path])
+                            let oldMod = await makeZip("Old Mod", files: ["profile.xml": Data(#"<message Version="1.0" Name="Old Mod" OperatingSystem="Windows" UsesYYC="False" />"#.utf8)],
                                                  copying: ["data.xdelta": delta])
                             let beforeOld = profiles().count
                             model.startModInstall(zip: oldMod)
@@ -546,7 +543,7 @@ enum SelfTest {
     }
 
     /// A zip in the temp folder holding `files` and copies of `copying` (files or folders), at its top level.
-    private static func makeZip(_ name: String, files: [String: Data], copying: [String: URL]) -> URL {
+    private static func makeZip(_ name: String, files: [String: Data], copying: [String: URL]) async -> URL {
         let fm = FileManager.default
         let dir = fm.temporaryDirectory.appending(path: "selftest-\(UUID().uuidString)", directoryHint: .isDirectory)
         let content = dir.appending(path: name, directoryHint: .isDirectory)
@@ -554,12 +551,8 @@ enum SelfTest {
         for (path, data) in files { try? data.write(to: content.appending(path: path)) }
         for (path, source) in copying { try? fm.copyItem(at: source, to: content.appending(path: path)) }
         let zip = dir.appending(path: name + ".zip")
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/zip")
-        process.currentDirectoryURL = content
-        process.arguments = ["-qr", zip.path, "."]
-        try? process.run()
-        process.waitUntilExit()
+        // zip, not ditto: the way mod authors make them.
+        _ = try? await Shell.run("/usr/bin/zip", ["-qr", zip.path, "."], in: content)
         return zip
     }
 

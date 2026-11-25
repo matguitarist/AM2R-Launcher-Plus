@@ -1,4 +1,5 @@
 import Foundation
+import ProcessKit
 
 /// The Rosetta engine (S-014): the official GameMaker runner, rebuilt from AM2R 1.1's AM2R.exe like
 /// AM2R-Autopatcher-Mac's patcher.command does, as `<profile>/AM2R.app`, and run by Rosetta 2.
@@ -115,14 +116,14 @@ public enum RosettaApp {
     }
 
     private static func codesign(_ app: URL) throws(Failure) {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
-        process.arguments = ["--force", "--deep", "--sign", "-", app.path]
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
-        do { try process.run() } catch { throw .copyFailed("codesign: \(error)") }
-        process.waitUntilExit()
-        guard process.terminationStatus == 0 else { throw .copyFailed("codesign exited with \(process.terminationStatus)") }
+        let output: Shell.Output
+        do {
+            output = try Shell.runSync("/usr/bin/codesign", ["--force", "--deep", "--sign", "-", app.path],
+                                       options: Shell.Options(stdout: .discard, stderr: .discard))
+        } catch {
+            throw .copyFailed("codesign: \(error)")
+        }
+        guard output.succeeded else { throw .copyFailed("codesign exited with \(output.status)") }
     }
 
     /// AM2R.exe from the 1.1 folder, or unpacked from its .zip or .7z into `work`.

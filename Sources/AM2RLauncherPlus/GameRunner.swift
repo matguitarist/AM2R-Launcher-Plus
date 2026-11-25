@@ -1,5 +1,6 @@
 import AM2RLauncherPlusKit
 import AppKit
+import ProcessKit
 
 /// Starts and watches the game for one profile (S-005).
 /// Native: the bundled helper app Contents/Helpers/AM2R.app (Butterscotch, S-007).
@@ -9,10 +10,12 @@ final class GameRunner {
     let profileID: UUID
     let startedAt = Date.now
     let log: URL
-    private let process: Process
+    /// Runs the engine (or `open -W` for Rosetta) until it ends; cancelling it stops the engine.
+    private var task: Task<Void, Never>?
     /// Set for Rosetta: `open` only waits, the game is the app with this bundle id.
     private let rosettaBundleID: String?
     private(set) var stoppedByUser = false
+    private(set) var isRunning = true
 
     /// The engine inside this app. Nil when it's missing (a dev build without the helper).
     static var engine: URL? {
@@ -45,20 +48,23 @@ final class GameRunner {
 
     /// Launches the game. `extraArguments` lets the self-test run the engine headless.
     /// `gamepadKeys` is BUTTERSCOTCH_GAMEPAD_KEYS, controller buttons that also press keys (S-011).
-    init(profile: Profile, extraArguments: [String] = [], gamepadKeys: String? = nil, environment extra: [String: String] = [:], onExit: @escaping @MainActor (Int32) -> Void) throws(StartError) {
+    /// `onExit` gets the exit status (the signal's number when one ended it); `onStartFailure` is called
+    /// instead when the engine couldn't start at all.
+    init(profile: Profile, extraArguments: [String] = [], gamepadKeys: String? = nil, environment extra: [String: String] = [:],
+         onExit: @escaping @MainActor (Int32) -> Void, onStartFailure: @escaping @MainActor (StartError) -> Void) throws(StartError) {
         let fm = FileManager.default
         let game = profile.folder.appending(path: "game.ios")
         guard fm.fileExists(atPath: game.path) else { throw .gameMissing }
-        process = Process()
+        let tool: String
         switch profile.engine {
         case .native:
             guard let engine = Self.engine else { throw .engineMissing }
-            process.executableURL = engine
+            tool = engine.path
             rosettaBundleID = nil
         case .rosetta:
             guard Rosetta.isInstalled else { throw .rosettaMissing }
             guard RosettaApp.app(in: profile.folder) != nil else { throw .rosettaAppMissing }
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+            tool = "/usr/bin/open"
             rosettaBundleID = RosettaApp.bundleIdentifier(for: profile.uuid)
         }
         let saves = Self.saveFolder(for: profile)
@@ -71,30 +77,41 @@ final class GameRunner {
         fm.createFile(atPath: log.path, contents: nil)
         profileID = profile.uuid
 
+        let arguments: [String]
+        let options: Shell.Options
         if let rosettaBundleID, let app = RosettaApp.app(in: profile.folder) {
             // The runner keeps saves in Application Support/<bundle id>: point that at the profile's save folder,
             // so both engines share one save folder and config.ini.
             do { try Self.linkRunnerData(Self.runnerDataFolder(bundleID: rosettaBundleID), to: saves) } catch {
                 throw .couldNotStart(error.localizedDescription)
             }
-            process.arguments = RosettaApp.openArguments(app: app, log: log)
+            // The game's output goes to the log through open's --stdout and --stderr.
+            arguments = RosettaApp.openArguments(app: app, log: log)
+            options = Shell.Options(stdout: .discard, stderr: .discard)
         } else {
-            process.currentDirectoryURL = profile.folder
-            process.arguments = extraArguments + ["--save-folder", saves.path, game.path]
+            arguments = extraArguments + ["--save-folder", saves.path, game.path]
             var environment = ProcessInfo.processInfo.environment
+            // Nil removes one the launcher itself was started with.
             environment["BUTTERSCOTCH_GAMEPAD_KEYS"] = gamepadKeys
             environment.merge(extra) { _, new in new }
-            process.environment = environment
-            if let handle = try? FileHandle(forWritingTo: log) {
-                process.standardOutput = handle
-                process.standardError = handle
+            options = Shell.Options(directory: profile.folder, environment: environment, inheritsEnvironment: false,
+                                    stdout: .file(log), stderr: .merged)
+        }
+        task = Task { [weak self] in
+            do {
+                let output = try await Shell.run(tool, arguments, options: options)
+                self?.isRunning = false
+                // A signal reads as its number, as before: 15 for SIGTERM, 11 for a crash.
+                onExit(output.signal ?? output.status)
+            } catch is CancellationError {
+                // Stop: the engine got SIGTERM (SIGKILL 3 s later) and has ended.
+                self?.isRunning = false
+                onExit(SIGTERM)
+            } catch {
+                self?.isRunning = false
+                onStartFailure(.couldNotStart(error.localizedDescription))
             }
         }
-        process.terminationHandler = { finished in
-            let status = finished.terminationStatus
-            Task { @MainActor in onExit(status) }
-        }
-        do { try process.run() } catch { throw .couldNotStart(error.localizedDescription) }
     }
 
     /// Where the official runner keeps saves for a bundle id.
@@ -118,12 +135,10 @@ final class GameRunner {
         try fm.createSymbolicLink(at: link, withDestinationURL: saves)
     }
 
-    var isRunning: Bool { process.isRunning }
-
     func stop() {
         stoppedByUser = true
         guard let rosettaBundleID else {
-            process.terminate()
+            task?.cancel()
             return
         }
         // `open -W` ends when the app quits.
