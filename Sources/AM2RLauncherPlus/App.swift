@@ -21,6 +21,7 @@ struct AM2RLauncherPlusApp: App {
         Window("AM2R Launcher Plus", id: "main") {
             ContentView()
                 .environment(model)
+                .whatsNew(app: "AM2R Launcher Plus", repository: "matguitarist/AM2R-Launcher-Plus")
                 .themed()
                 .overlay { if GridOverlay.enabled { GridOverlay() } }
                 .frame(minWidth: 760, minHeight: 480)

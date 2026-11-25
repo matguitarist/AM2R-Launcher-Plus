@@ -25,6 +25,16 @@ extension SelfTest {
             let issue = RepositoryLinks(repository: "matguitarist/AM2R-Launcher-Plus").newIssue(app: "AM2R Launcher Plus").absoluteString
             check("Help › Report a Problem opens a new GitHub issue with the version and macOS filled in",
                   issue.hasPrefix("https://github.com/matguitarist/AM2R-Launcher-Plus/issues/new?body=") && issue.contains("macOS"), issue)
+            // What's New: a newer version shows its bundled notes once; a fresh install and test runs show nothing.
+            check("What's New compares versions number by number",
+                  WhatsNew.isNewer("0.10.0", than: "0.9.2") && WhatsNew.isNewer("1.0", than: "0.9.9") && !WhatsNew.isNewer("0.9.0", than: "0.9.0")
+                  && !WhatsNew.isNewer("2.4", than: "2.4.0") && !WhatsNew.isNewer("0.8.2", than: "0.9.0"))
+            check("What's New stays quiet on a fresh install", !WhatsNew.isNewer("0.9.0", than: nil))
+            check("What's New never shows in a test run", WhatsNew.isTestRun && WhatsNew.pending(defaults: UserDefaults(suiteName: "WhatsNew-selftest") ?? .standard) == nil)
+            check("this version's release notes are in the app", WhatsNew.bundled(WhatsNew.currentVersion) != nil, WhatsNew.currentVersion)
+            check("release notes read as headings, list items and paragraphs",
+                  NotesBlock.parse("## New\n\n- **One**\n  more\n- Two\n\nText\non two lines") ==
+                  [.heading("New"), .item(marker: "•", text: "**One** more"), .item(marker: "•", text: "Two"), .paragraph("Text on two lines")])
             context.delete(profile)
             try? context.save()
             check("deleting the profile removes it", profiles().count == before)

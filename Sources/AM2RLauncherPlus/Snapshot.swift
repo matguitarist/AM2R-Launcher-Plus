@@ -176,6 +176,8 @@ enum Snapshot {
                 model.debugLogSource = .launcher
                 model.sidebar = .play
             }
+            await run.shoot("whats-new", window: { WindowShot.mainWindow()?.attachedSheet },
+                           show: { WhatsNewState.shared.shown = .sample }, hide: { WhatsNewState.shared.shown = nil })
             await run.shootSettings(tabs: SettingsTab.allCases.map(\.rawValue), open: { openSettings() },
                                     select: { model.settingsTab = SettingsTab(rawValue: $0)! })
             run.finish()

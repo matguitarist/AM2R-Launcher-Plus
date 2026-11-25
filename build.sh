@@ -52,6 +52,8 @@ mkdir -p "$app/Contents/Frameworks"
 cp -R "$scratch/$config/Sparkle.framework" "$app/Contents/Frameworks/"
 # The About window's credits.
 cp -X "$here/Resources/Credits.rtf" "$app/Contents/Resources/"
+# Release notes: What's New shows release-notes/<version>.md the first time a new version opens.
+[[ -d "$here/release-notes" ]] && cp -R "$here/release-notes" "$app/Contents/Resources/"
 # The icon: Icon/AppIcon.icon -> Resources/Assets.car + AppIcon.icns, rebuilt when it changed.
 if [[ -d "$here/Icon/AppIcon.icon" ]]; then
   car="$here/Resources/Assets.car"
