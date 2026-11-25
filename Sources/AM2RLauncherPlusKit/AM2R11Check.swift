@@ -1,3 +1,4 @@
+import ArchiveKit
 import CryptoKit
 import Foundation
 
@@ -45,14 +46,14 @@ public enum AM2R11 {
     }
 
     /// Checks a .zip, .7z or folder. Hashes are cached by path, size and modified date.
-    public static func check(_ url: URL, cache: HashCache? = nil) throws(Problem) -> Copy {
+    public static func check(_ url: URL, cache: HashCache? = nil) async throws(Problem) -> Copy {
         var isDirectory: ObjCBool = false
         guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) else { throw .notZipOrFolder }
         if isDirectory.boolValue {
             return try checkFolder(url, cache: cache)
         }
         guard ["zip", "7z"].contains(url.pathExtension.lowercased()) else { throw .notZipOrFolder }
-        return try checkZip(url, cache: cache)
+        return try await checkZip(url, cache: cache)
     }
 
     // MARK: Folder
@@ -79,15 +80,15 @@ public enum AM2R11 {
 
     // MARK: Zip
 
-    private static func checkZip(_ url: URL, cache: HashCache?) throws(Problem) -> Copy {
-        guard let entries = Zip.list(url) else { throw .unreadableZip }
+    private static func checkZip(_ url: URL, cache: HashCache?) async throws(Problem) -> Copy {
+        guard let entries = await names(in: url) else { throw .unreadableZip }
         guard let root = zipRoot(entries) else { throw .missingDataWin }
         let key = HashCache.Key(url: url, member: root + "data.win")
         let hash: String
         if let cached = key.flatMap({ cache?.value(for: $0) }) {
             hash = cached
         } else {
-            guard let computed = Zip.md5(of: root + "data.win", in: url) else { throw .unreadableZip }
+            guard let computed = await memberMD5(of: root + "data.win", in: url) else { throw .unreadableZip }
             hash = computed
             if let key { cache?.store(computed, for: key) }
         }
@@ -95,10 +96,14 @@ public enum AM2R11 {
         var exeHash: String?
         if entries.contains(root + "AM2R.exe") {
             let exeKey = HashCache.Key(url: url, member: root + "AM2R.exe")
-            exeHash = exeKey.flatMap { cache?.value(for: $0) } ?? Zip.md5(of: root + "AM2R.exe", in: url)
+            if let cached = exeKey.flatMap({ cache?.value(for: $0) }) {
+                exeHash = cached
+            } else {
+                exeHash = await memberMD5(of: root + "AM2R.exe", in: url)
+            }
             if let exeKey, let exeHash { cache?.store(exeHash, for: exeKey) }
         }
-        return Copy(url: url, kind: Zip.isSevenZip(url) ? .sevenZip : .zip, root: root, hasWindowsGame: exeHash == exeMD5)
+        return Copy(url: url, kind: isSevenZip(url) ? .sevenZip : .zip, root: root, hasWindowsGame: exeHash == exeMD5)
     }
 
     static func zipRoot(_ entries: [String]) -> String? {
@@ -106,6 +111,34 @@ public enum AM2R11 {
         let nested = entries.filter { $0.hasSuffix("/data.win") && $0.split(separator: "/").count == 2 }
         guard nested.count == 1 else { return nil }
         return String(nested[0].dropLast("data.win".count))
+    }
+
+    // MARK: Archives
+
+    static func isSevenZip(_ archive: URL) -> Bool { archive.pathExtension.lowercased() == "7z" }
+
+    /// The names in a .zip (read from its directory) or a .7z (listed by macOS's tar), nil when it can't be read.
+    static func names(in archive: URL) async -> [String]? {
+        if isSevenZip(archive) { return try? await AnyArchive.names(archive) }
+        return try? Zip.names(archive)
+    }
+
+    /// One member's MD5, nil when it can't be read or is empty. The member is written to a temporary file
+    /// and hashed from there, so a 48 MB data.win is never held in memory.
+    static func memberMD5(of member: String, in archive: URL) async -> String? {
+        let file = FileManager.default.temporaryDirectory.appending(path: "am2r-member-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: file) }
+        do {
+            if isSevenZip(archive) {
+                try await AnyArchive.extract(member, from: archive, to: file)
+            } else {
+                try await Zip.extract(member, from: archive, to: file)
+            }
+        } catch {
+            return nil
+        }
+        guard let size = (try? file.resourceValues(forKeys: [.fileSizeKey]))?.fileSize, size > 0 else { return nil }
+        return md5(of: file)
     }
 
     // MARK: Hashing
@@ -180,71 +213,5 @@ public final class HashCache: @unchecked Sendable {
             try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
             try? data.write(to: file, options: .atomic)
         }
-    }
-}
-
-/// Reads zips with the system's /usr/bin/unzip, and .7z with its /usr/bin/tar (bsdtar), with no
-/// third-party code; large members are streamed.
-enum Zip {
-    static func isSevenZip(_ archive: URL) -> Bool { archive.pathExtension.lowercased() == "7z" }
-
-    static func list(_ zip: URL) -> [String]? {
-        guard let output = isSevenZip(zip) ? tool("/usr/bin/tar", ["-tf", zip.path]) : tool("/usr/bin/zipinfo", ["-1", zip.path]) else { return nil }
-        return String(decoding: output, as: UTF8.self).split(separator: "\n").map(String.init)
-    }
-
-    /// tar's arguments to extract `members` of a .7z into `folder`, dropping `root` from their paths
-    /// like unzip -j. Names are tar patterns, so * ? [ ] \ in `root` are escaped.
-    static func sevenZipExtract(_ archive: URL, root: String, members: [String], into folder: URL) -> [String] {
-        var literal = ""
-        for c in root {
-            if "*?[]\\".contains(c) { literal.append("\\") }
-            literal.append(c)
-        }
-        let depth = root.split(separator: "/").count
-        return ["-xf", archive.path, "-C", folder.path, "--strip-components", String(depth), "--"] + members.map { literal + $0 }
-    }
-
-    static func md5(of member: String, in zip: URL) -> String? {
-        let process = Process()
-        if isSevenZip(zip) {
-            var literal = ""
-            for c in member {
-                if "*?[]\\".contains(c) { literal.append("\\") }
-                literal.append(c)
-            }
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/tar")
-            process.arguments = ["-xOf", zip.path, "--", literal]
-        } else {
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
-            process.arguments = ["-p", zip.path, member]
-        }
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-        do { try process.run() } catch { return nil }
-        var hasher = Insecure.MD5()
-        var bytes = 0
-        let reader = pipe.fileHandleForReading
-        while let chunk = try? reader.read(upToCount: 1 << 20), !chunk.isEmpty {
-            hasher.update(data: chunk)
-            bytes += chunk.count
-        }
-        process.waitUntilExit()
-        guard process.terminationStatus == 0, bytes > 0 else { return nil }
-        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
-    }
-
-    private static func tool(_ path: String, _ arguments: [String]) -> Data? {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: path)
-        process.arguments = arguments
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-        do { try process.run() } catch { return nil }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        return process.terminationStatus == 0 ? data : nil
     }
 }

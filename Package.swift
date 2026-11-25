@@ -11,11 +11,13 @@ let package = Package(
         .package(url: "https://github.com/matguitarist/LogKit", from: "0.6.0"),
         // Every command the launcher runs (the engine, codesign, osascript), shared by my Mac apps.
         .package(url: "https://github.com/matguitarist/ProcessKit", from: "0.1.1"),
+        // Zips and .7z in, save backups out, with Zip Slip checks; shared by my Mac apps.
+        .package(url: "https://github.com/matguitarist/ArchiveKit", from: "0.1.1"),
     ],
     targets: [
         // Rules and data logic with no SwiftUI, so tests run without the app.
         .target(name: "AM2RLauncherPlusKit", dependencies: [.product(name: "LogKit", package: "LogKit"),
-                                                     .product(name: "ProcessKit", package: "ProcessKit")]),
+                                                     .product(name: "ProcessKit", package: "ProcessKit"), .product(name: "ArchiveKit", package: "ArchiveKit")]),
         .executableTarget(
             name: "AM2RLauncherPlus",
             dependencies: ["AM2RLauncherPlusKit", .product(name: "Sparkle", package: "Sparkle"),
@@ -27,6 +29,6 @@ let package = Package(
             linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]
         ),
         .testTarget(name: "AM2RLauncherPlusKitTests", dependencies: ["AM2RLauncherPlusKit", .product(name: "LogKit", package: "LogKit"),
-                                                                 .product(name: "ProcessKit", package: "ProcessKit")]),
+                                                                 .product(name: "ProcessKit", package: "ProcessKit"), .product(name: "ArchiveKit", package: "ArchiveKit")]),
     ]
 )

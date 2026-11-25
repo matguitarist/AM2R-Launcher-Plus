@@ -1,3 +1,4 @@
+import ArchiveKit
 import Foundation
 import ProcessKit
 
@@ -50,7 +51,7 @@ public enum RosettaApp {
     ///   - source: the AM2R 1.1 zip or folder, with `root` the folder inside it that holds AM2R.exe.
     @discardableResult
     public static func build(source: URL, kind: AM2R11.Kind, root: String, patchData: URL, profileFolder: URL,
-                             bundleIdentifier: String, sign: Bool = true) throws(Failure) -> URL {
+                             bundleIdentifier: String, sign: Bool = true) async throws(Failure) -> URL {
         let fm = FileManager.default
         let data = patchData.appending(path: "data", directoryHint: .isDirectory)
         let runnerPatch = data.appending(path: "AM2R.xdelta")
@@ -65,7 +66,7 @@ public enum RosettaApp {
         defer { try? fm.removeItem(at: work) }
 
         do {
-            let exe = try windowsGame(source: source, kind: kind, root: root, work: work)
+            let exe = try await windowsGame(source: source, kind: kind, root: root, work: work)
             try fm.createDirectory(at: contents.appending(path: "MacOS", directoryHint: .isDirectory), withIntermediateDirectories: true)
             let runner = contents.appending(path: "MacOS/\(runnerName)")
             do {
@@ -126,34 +127,25 @@ public enum RosettaApp {
         guard output.succeeded else { throw .copyFailed("codesign exited with \(output.status)") }
     }
 
-    /// AM2R.exe from the 1.1 folder, or unpacked from its .zip or .7z into `work`.
-    private static func windowsGame(source: URL, kind: AM2R11.Kind, root: String, work: URL) throws(Failure) -> URL {
-        let fm = FileManager.default
+    /// AM2R.exe from the 1.1 folder, or taken out of its .zip or .7z into `work`.
+    private static func windowsGame(source: URL, kind: AM2R11.Kind, root: String, work: URL) async throws(Failure) -> URL {
         switch kind {
         case .folder:
             let exe = (root.isEmpty ? source : source.appending(path: root, directoryHint: .isDirectory)).appending(path: "AM2R.exe")
-            guard fm.fileExists(atPath: exe.path) else { throw .noWindowsGame }
+            guard FileManager.default.fileExists(atPath: exe.path) else { throw .noWindowsGame }
             return exe
         case .zip, .sevenZip:
+            let exe = work.appending(path: "AM2R.exe")
             do {
-                try fm.createDirectory(at: work, withIntermediateDirectories: true)
-                let process = Process()
                 if kind == .sevenZip {
-                    process.executableURL = URL(fileURLWithPath: "/usr/bin/tar")
-                    process.arguments = Zip.sevenZipExtract(source, root: root, members: ["AM2R.exe"], into: work)
+                    try await AnyArchive.extract(root + "AM2R.exe", from: source, to: exe)
                 } else {
-                    process.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
-                    process.arguments = ["-o", "-q", "-j", source.path, root + "AM2R.exe", "-d", work.path]
+                    try await Zip.extract(root + "AM2R.exe", from: source, to: exe)
                 }
-                process.standardOutput = FileHandle.nullDevice
-                process.standardError = FileHandle.nullDevice
-                try process.run()
-                process.waitUntilExit()
-                guard process.terminationStatus == 0 else { throw Failure.noWindowsGame }
             } catch {
                 throw .noWindowsGame
             }
-            return work.appending(path: "AM2R.exe")
+            return exe
         }
     }
 

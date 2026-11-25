@@ -358,8 +358,8 @@ final class AppModel {
     func choose(_ url: URL) async {
         welcome = .checking(url.lastPathComponent)
         let cache = hashCache
-        let result = await Task.detached(priority: .userInitiated) { () -> Result<AM2R11.Copy, AM2R11.Problem> in
-            Result { () throws(AM2R11.Problem) in try AM2R11.check(url, cache: cache) }
+        let result = await Task.detached(priority: .userInitiated) { () async -> Result<AM2R11.Copy, AM2R11.Problem> in
+            do throws(AM2R11.Problem) { return .success(try await AM2R11.check(url, cache: cache)) } catch { return .failure(error) }
         }.value
         switch result {
         case .success(let copy):
@@ -404,7 +404,7 @@ final class AppModel {
                 let uuid = existing?.uuid ?? UUID()
                 let destination = DataFolder.profiles.appending(path: uuid.uuidString, directoryHint: .isDirectory)
                 let result = try await Task.detached(priority: .userInitiated) {
-                    try ProfileBuilder.build(source: sourceURL, kind: kind, root: root, patchData: patchFolder, destination: destination) { step in
+                    try await ProfileBuilder.build(source: sourceURL, kind: kind, root: root, patchData: patchFolder, destination: destination) { step in
                         if step == .copy { Task { @MainActor in self.install?.step = .copy } }
                     }
                 }.value
@@ -462,10 +462,10 @@ final class AppModel {
             do {
                 let scoped = zip.startAccessingSecurityScopedResource()
                 defer { if scoped { zip.stopAccessingSecurityScopedResource() } }
-                let package = try await Task.detached(priority: .userInitiated) { () throws -> ModPackage in
-                    let package = try ModPackage.read(zip)
+                let package = try await Task.detached(priority: .userInitiated) { () async throws -> ModPackage in
+                    let package = try await ModPackage.read(zip)
                     try FileManager.default.createDirectory(at: extracted, withIntermediateDirectories: true)
-                    try package.extract(into: extracted)
+                    try await package.extract(into: extracted)
                     return package
                 }.value
                 let title = package.version.isEmpty ? package.name : "\(package.name) \(package.version)"
@@ -475,7 +475,7 @@ final class AppModel {
                 install?.step = .patch
                 let destination = DataFolder.profiles.appending(path: uuid.uuidString, directoryHint: .isDirectory)
                 _ = try await Task.detached(priority: .userInitiated) {
-                    try ProfileBuilder.build(source: sourceURL, kind: kind, root: root, patch: .mod(extracted, package: package), destination: destination) { step in
+                    try await ProfileBuilder.build(source: sourceURL, kind: kind, root: root, patch: .mod(extracted, package: package), destination: destination) { step in
                         if step == .copy { Task { @MainActor in self.install?.step = .copy } }
                     }
                 }.value
@@ -797,8 +797,8 @@ final class AppModel {
         backupError = nil
         backupMessage = nil
         let saves = GameRunner.saveFolder(for: profile), folder = DataFolder.backups(for: profile.uuid), name = profile.name
-        let result = await Task.detached(priority: .userInitiated) { () -> Result<URL, SaveBackup.Failure> in
-            Result { () throws(SaveBackup.Failure) in try SaveBackup.backup(saves: saves, into: folder, profileName: name, label: label) }
+        let result = await Task.detached(priority: .userInitiated) { () async -> Result<URL, SaveBackup.Failure> in
+            do throws(SaveBackup.Failure) { return .success(try await SaveBackup.backup(saves: saves, into: folder, profileName: name, label: label)) } catch { return .failure(error) }
         }.value
         switch result {
         case .success(let zip):
@@ -821,8 +821,8 @@ final class AppModel {
         if hasSaves, await backUpSaves(profile, label: "before restore") == nil { return false }
         backingUp = true
         defer { backingUp = false }
-        let result = await Task.detached(priority: .userInitiated) { () -> Result<Void, SaveBackup.Failure> in
-            Result { () throws(SaveBackup.Failure) in try SaveBackup.restore(zip, into: saves) }
+        let result = await Task.detached(priority: .userInitiated) { () async -> Result<Void, SaveBackup.Failure> in
+            do throws(SaveBackup.Failure) { return .success(try await SaveBackup.restore(zip, into: saves)) } catch { return .failure(error) }
         }.value
         switch result {
         case .success:
@@ -962,9 +962,11 @@ final class AppModel {
         let sourceURL = source.url, kind = AM2R11.Kind(rawValue: source.kindRaw) ?? .zip, root = source.root
         let patch = DataFolder.patchData.appending(path: profile.patchCommit, directoryHint: .isDirectory)
         let folder = profile.folder, id = RosettaApp.bundleIdentifier(for: profile.uuid)
-        let result = await Task.detached(priority: .userInitiated) { () -> Result<URL, RosettaApp.Failure> in
-            Result { () throws(RosettaApp.Failure) in
-                try RosettaApp.build(source: sourceURL, kind: kind, root: root, patchData: patch, profileFolder: folder, bundleIdentifier: id)
+        let result = await Task.detached(priority: .userInitiated) { () async -> Result<URL, RosettaApp.Failure> in
+            do throws(RosettaApp.Failure) {
+                return .success(try await RosettaApp.build(source: sourceURL, kind: kind, root: root, patchData: patch, profileFolder: folder, bundleIdentifier: id))
+            } catch {
+                return .failure(error)
             }
         }.value
         switch result {

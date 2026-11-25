@@ -41,9 +41,9 @@ private struct Setup {
 }
 
 @Test(.enabled(if: xdelta3 != nil))
-func buildsAProfileFromAFolder() throws {
+func buildsAProfileFromAFolder() async throws {
     let setup = try Setup()
-    let result = try ProfileBuilder.build(source: setup.game, kind: .folder, root: "", patchData: setup.patch, destination: setup.destination)
+    let result = try await ProfileBuilder.build(source: setup.game, kind: .folder, root: "", patchData: setup.patch, destination: setup.destination)
     let out = result.folder
     let read = { (path: String) in try? String(contentsOf: out.appending(path: path), encoding: .utf8) }
     #expect(read("game.ios")?.hasPrefix("PATCHED ") == true)
@@ -59,33 +59,33 @@ func buildsAProfileFromAFolder() throws {
 }
 
 @Test(.enabled(if: xdelta3 != nil))
-func buildsAProfileFromANestedZip() throws {
+func buildsAProfileFromANestedZip() async throws {
     let setup = try Setup()
     let zip = setup.dir.appending(path: "AM2R_11.zip")
     _ = try Shell.runSync("/usr/bin/zip", ["-qr", zip.path, "AM2R_11"], in: setup.dir)
-    let result = try ProfileBuilder.build(source: zip, kind: .zip, root: "AM2R_11/", patchData: setup.patch, destination: setup.destination)
+    let result = try await ProfileBuilder.build(source: zip, kind: .zip, root: "AM2R_11/", patchData: setup.patch, destination: setup.destination)
     #expect((try? String(contentsOf: result.folder.appending(path: "game.ios"), encoding: .utf8))?.hasPrefix("PATCHED ") == true)
     #expect(FileManager.default.fileExists(atPath: result.folder.appending(path: "musarea1a.ogg").path))
 }
 
 @Test(.enabled(if: xdelta3 != nil), arguments: [true, false])
-func buildsAProfileFromA7z(nested: Bool) throws {
+func buildsAProfileFromA7z(nested: Bool) async throws {
     let setup = try Setup()
     let archive = setup.dir.appending(path: "AM2R_11.7z")
     let names = try FileManager.default.contentsOfDirectory(atPath: setup.game.path)
     _ = try Shell.runSync("/usr/bin/tar", ["--format", "7zip", "-cf", archive.path] + (nested ? ["AM2R_11"] : names), in: nested ? setup.dir : setup.game)
-    let result = try ProfileBuilder.build(source: archive, kind: .sevenZip, root: nested ? "AM2R_11/" : "", patchData: setup.patch, destination: setup.destination)
+    let result = try await ProfileBuilder.build(source: archive, kind: .sevenZip, root: nested ? "AM2R_11/" : "", patchData: setup.patch, destination: setup.destination)
     #expect((try? String(contentsOf: result.folder.appending(path: "game.ios"), encoding: .utf8))?.hasPrefix("PATCHED ") == true)
     #expect(FileManager.default.fileExists(atPath: result.folder.appending(path: "musarea1a.ogg").path))
 }
 
 @Test(.enabled(if: xdelta3 != nil))
-func aFailedPatchLeavesNoProfileAndKeepsTheOldOne() throws {
+func aFailedPatchLeavesNoProfileAndKeepsTheOldOne() async throws {
     let setup = try Setup(validPatch: false)
     try FileManager.default.createDirectory(at: setup.destination, withIntermediateDirectories: true)
     try Data("keep".utf8).write(to: setup.destination.appending(path: "game.ios"))
-    #expect(throws: (any Error).self) {
-        try ProfileBuilder.build(source: setup.game, kind: .folder, root: "", patchData: setup.patch, destination: setup.destination)
+    await #expect(throws: (any Error).self) {
+        try await ProfileBuilder.build(source: setup.game, kind: .folder, root: "", patchData: setup.patch, destination: setup.destination)
     }
     #expect((try? String(contentsOf: setup.destination.appending(path: "game.ios"), encoding: .utf8)) == "keep")
     #expect(!FileManager.default.fileExists(atPath: setup.destination.path + ".partial"))
@@ -96,11 +96,11 @@ func aFailedPatchLeavesNoProfileAndKeepsTheOldOne() throws {
 @Test(.enabled(if: ProcessInfo.processInfo.environment["NETWORK_TESTS"] == "1" && ProcessInfo.processInfo.environment["AM2R11_PATH"] != nil))
 func buildsTheRealCommunityUpdatesProfile() async throws {
     let source = URL(fileURLWithPath: ProcessInfo.processInfo.environment["AM2R11_PATH"]!)
-    let copy = try AM2R11.check(source)
+    let copy = try await AM2R11.check(source)
     let manifest = try await PatchData.latestManifest(rosetta: false)
     let patch = try await PatchData.download(manifest, into: FileManager.default.temporaryDirectory.appending(path: "patchdata-e2e", directoryHint: .isDirectory))
     let destination = FileManager.default.temporaryDirectory.appending(path: "profile-e2e", directoryHint: .isDirectory)
-    let result = try ProfileBuilder.build(source: copy.url, kind: copy.kind, root: copy.root, patchData: patch, destination: destination)
+    let result = try await ProfileBuilder.build(source: copy.url, kind: copy.kind, root: copy.root, patchData: patch, destination: destination)
     #expect(result.info.version == "1.5.5")
     #expect(AM2R11.md5(of: result.folder.appending(path: "game.ios")) == "0de029951c94b04545c9c257053ad712")
     let oggs = try FileManager.default.contentsOfDirectory(atPath: result.folder.path).filter { $0.hasSuffix(".ogg") }
@@ -109,7 +109,7 @@ func buildsTheRealCommunityUpdatesProfile() async throws {
 
 /// S-021: an update rebuilds the profile beside the old one; the saves next to it stay as they are.
 @Test(.enabled(if: xdelta3 != nil))
-func updatingAProfileReplacesItsFilesAndKeepsTheSaves() throws {
+func updatingAProfileReplacesItsFilesAndKeepsTheSaves() async throws {
     let setup = try Setup()
     let fm = FileManager.default
     try fm.createDirectory(at: setup.destination, withIntermediateDirectories: true)
@@ -121,7 +121,7 @@ func updatingAProfileReplacesItsFilesAndKeepsTheSaves() throws {
     try Data(config.utf8).write(to: saves.appending(path: "config.ini"))
     try Data("save".utf8).write(to: saves.appending(path: "save1"))
 
-    let result = try ProfileBuilder.build(source: setup.game, kind: .folder, root: "", patchData: setup.patch, destination: setup.destination)
+    let result = try await ProfileBuilder.build(source: setup.game, kind: .folder, root: "", patchData: setup.patch, destination: setup.destination)
     #expect((try? String(contentsOf: result.folder.appending(path: "game.ios"), encoding: .utf8))?.hasPrefix("PATCHED ") == true)
     #expect(!fm.fileExists(atPath: setup.destination.appending(path: "removed-in-update.txt").path))
     #expect(!fm.fileExists(atPath: setup.destination.path + ".partial"))

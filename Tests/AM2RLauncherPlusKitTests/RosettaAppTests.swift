@@ -38,9 +38,9 @@ private struct RosettaSetup {
 }
 
 @Test(.enabled(if: xdelta3 != nil))
-func buildsTheRosettaApp() throws {
+func buildsTheRosettaApp() async throws {
     let setup = try RosettaSetup()
-    let app = try RosettaApp.build(source: setup.game, kind: .folder, root: "", patchData: setup.patch,
+    let app = try await RosettaApp.build(source: setup.game, kind: .folder, root: "", patchData: setup.patch,
                                    profileFolder: setup.profile, bundleIdentifier: setup.id, sign: false)
     let read = { (path: String) in try? String(contentsOf: app.appending(path: "Contents/" + path), encoding: .utf8) }
     #expect(app == setup.profile.appending(path: "AM2R.app", directoryHint: .isDirectory))
@@ -59,50 +59,50 @@ func buildsTheRosettaApp() throws {
     #expect(RosettaApp.app(in: setup.profile) == app)
 
     // Building again replaces the app and never nests the old one in Resources.
-    try RosettaApp.build(source: setup.game, kind: .folder, root: "", patchData: setup.patch, profileFolder: setup.profile, bundleIdentifier: setup.id, sign: false)
+    try await RosettaApp.build(source: setup.game, kind: .folder, root: "", patchData: setup.patch, profileFolder: setup.profile, bundleIdentifier: setup.id, sign: false)
     #expect(!FileManager.default.fileExists(atPath: app.appending(path: "Contents/Resources/AM2R.app").path))
 }
 
 @Test(.enabled(if: xdelta3 != nil))
-func buildsTheRosettaAppFromAZip() throws {
+func buildsTheRosettaAppFromAZip() async throws {
     let setup = try RosettaSetup()
     let zip = setup.dir.appending(path: "AM2R_11.zip")
     _ = try Shell.runSync("/usr/bin/zip", ["-qr", zip.path, "AM2R_11"], in: setup.dir)
-    let app = try RosettaApp.build(source: zip, kind: .zip, root: "AM2R_11/", patchData: setup.patch,
+    let app = try await RosettaApp.build(source: zip, kind: .zip, root: "AM2R_11/", patchData: setup.patch,
                                    profileFolder: setup.profile, bundleIdentifier: setup.id, sign: false)
     #expect((try? String(contentsOf: app.appending(path: "Contents/MacOS/Mac_Runner"), encoding: .utf8))?.hasPrefix("RUNNER ") == true)
 }
 
 @Test(.enabled(if: xdelta3 != nil))
-func buildsTheRosettaAppFromA7z() throws {
+func buildsTheRosettaAppFromA7z() async throws {
     let setup = try RosettaSetup()
     let archive = setup.dir.appending(path: "AM2R_11.7z")
     _ = try Shell.runSync("/usr/bin/tar", ["--format", "7zip", "-cf", archive.path, "AM2R_11"], in: setup.dir)
-    let app = try RosettaApp.build(source: archive, kind: .sevenZip, root: "AM2R_11/", patchData: setup.patch,
+    let app = try await RosettaApp.build(source: archive, kind: .sevenZip, root: "AM2R_11/", patchData: setup.patch,
                                    profileFolder: setup.profile, bundleIdentifier: setup.id, sign: false)
     #expect((try? String(contentsOf: app.appending(path: "Contents/MacOS/Mac_Runner"), encoding: .utf8))?.hasPrefix("RUNNER ") == true)
 }
 
 @Test(.enabled(if: xdelta3 != nil))
-func aWrongExeLeavesNoRosettaApp() throws {
+func aWrongExeLeavesNoRosettaApp() async throws {
     let setup = try RosettaSetup(validPatch: false)
-    #expect(throws: (any Error).self) {
-        try RosettaApp.build(source: setup.game, kind: .folder, root: "", patchData: setup.patch, profileFolder: setup.profile, bundleIdentifier: setup.id, sign: false)
+    await #expect(throws: (any Error).self) {
+        try await RosettaApp.build(source: setup.game, kind: .folder, root: "", patchData: setup.patch, profileFolder: setup.profile, bundleIdentifier: setup.id, sign: false)
     }
     #expect(RosettaApp.app(in: setup.profile) == nil)
     #expect(!FileManager.default.fileExists(atPath: setup.profile.appending(path: "AM2R.app.partial").path))
 }
 
 @Test(.enabled(if: xdelta3 != nil))
-func rosettaNeedsTheExeAndTheRunnerPatch() throws {
+func rosettaNeedsTheExeAndTheRunnerPatch() async throws {
     let setup = try RosettaSetup()
     try FileManager.default.removeItem(at: setup.game.appending(path: "AM2R.exe"))
-    #expect(throws: RosettaApp.Failure.noWindowsGame) {
-        try RosettaApp.build(source: setup.game, kind: .folder, root: "", patchData: setup.patch, profileFolder: setup.profile, bundleIdentifier: setup.id, sign: false)
+    await #expect(throws: RosettaApp.Failure.noWindowsGame) {
+        try await RosettaApp.build(source: setup.game, kind: .folder, root: "", patchData: setup.patch, profileFolder: setup.profile, bundleIdentifier: setup.id, sign: false)
     }
     try FileManager.default.removeItem(at: setup.patch.appending(path: "data/AM2R.xdelta"))
-    #expect(throws: RosettaApp.Failure.noRunnerPatch) {
-        try RosettaApp.build(source: setup.game, kind: .folder, root: "", patchData: setup.patch, profileFolder: setup.profile, bundleIdentifier: setup.id, sign: false)
+    await #expect(throws: RosettaApp.Failure.noRunnerPatch) {
+        try await RosettaApp.build(source: setup.game, kind: .folder, root: "", patchData: setup.patch, profileFolder: setup.profile, bundleIdentifier: setup.id, sign: false)
     }
 }
 
@@ -116,11 +116,11 @@ func rosettaNeedsTheExeAndTheRunnerPatch() throws {
 /// On the real files: the player's AM2R 1.1, downloaded Rosetta patch data and a built profile folder (a copy).
 /// Set AM2R11_PATH, PATCH_DATA and ROSETTA_PROFILE to run. The runner is the official 1.4.1804 x86_64 binary.
 @Test(.enabled(if: ["AM2R11_PATH", "PATCH_DATA", "ROSETTA_PROFILE"].allSatisfy { ProcessInfo.processInfo.environment[$0] != nil }))
-func buildsTheRealRosettaApp() throws {
+func buildsTheRealRosettaApp() async throws {
     let env = ProcessInfo.processInfo.environment
-    let copy = try AM2R11.check(URL(fileURLWithPath: env["AM2R11_PATH"]!))
+    let copy = try await AM2R11.check(URL(fileURLWithPath: env["AM2R11_PATH"]!))
     let profile = URL(fileURLWithPath: env["ROSETTA_PROFILE"]!, isDirectory: true)
-    let app = try RosettaApp.build(source: copy.url, kind: copy.kind, root: copy.root, patchData: URL(fileURLWithPath: env["PATCH_DATA"]!),
+    let app = try await RosettaApp.build(source: copy.url, kind: copy.kind, root: copy.root, patchData: URL(fileURLWithPath: env["PATCH_DATA"]!),
                                    profileFolder: profile, bundleIdentifier: "com.yoyogames.am2r.profile-test")
     #expect(AM2R11.md5(of: app.appending(path: "Contents/Resources/game.ios")) == "0de029951c94b04545c9c257053ad712")
     #expect(try Shell.runSync("/usr/bin/file", [app.appending(path: "Contents/MacOS/Mac_Runner").path]).text.contains("x86_64"))

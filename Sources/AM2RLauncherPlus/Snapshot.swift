@@ -147,8 +147,8 @@ enum Snapshot {
                 try? FileManager.default.createDirectory(at: saves, withIntermediateDirectories: true)
                 try? Data("slot 1".utf8).write(to: saves.appending(path: "save1"))
                 let folder = DataFolder.backups(for: profile.uuid)
-                _ = try? SaveBackup.backup(saves: saves, into: folder, profileName: profile.name, date: .now.addingTimeInterval(-7 * 86_400))
-                _ = try? SaveBackup.backup(saves: saves, into: folder, profileName: profile.name, label: "before restore")
+                _ = try? await SaveBackup.backup(saves: saves, into: folder, profileName: profile.name, date: .now.addingTimeInterval(-7 * 86_400))
+                _ = try? await SaveBackup.backup(saves: saves, into: folder, profileName: profile.name, label: "before restore")
                 model.sidebar = .profiles
                 for mode in ["light", "dark"] {
                     NSApp.appearance = NSAppearance(named: mode == "light" ? .aqua : .darkAqua)

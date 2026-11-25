@@ -1,3 +1,4 @@
+import ArchiveKit
 import Foundation
 
 /// Builds a playable Community Updates profile from AM2R 1.1 and the patch data (S-003, S-004).
@@ -58,15 +59,15 @@ public enum ProfileBuilder {
 
     /// Builds Community Updates from a finished `PatchData.download` folder.
     public static func build(source: URL, kind: AM2R11.Kind, root: String, patchData: URL, destination: URL,
-                             step: (@Sendable (Step) -> Void)? = nil) throws -> Result {
-        try build(source: source, kind: kind, root: root, patch: .communityUpdates(patchData), destination: destination, step: step)
+                             step: (@Sendable (Step) -> Void)? = nil) async throws -> Result {
+        try await build(source: source, kind: kind, root: root, patch: .communityUpdates(patchData), destination: destination, step: step)
     }
 
     /// Builds into `destination` (replaced only when the new build is complete).
     /// - Parameters:
     ///   - source: the AM2R 1.1 zip or folder, with `root` the folder inside it that holds data.win.
     public static func build(source: URL, kind: AM2R11.Kind, root: String, patch: Patch, destination: URL,
-                             step: (@Sendable (Step) -> Void)? = nil) throws -> Result {
+                             step: (@Sendable (Step) -> Void)? = nil) async throws -> Result {
         let fm = FileManager.default
         let staging = destination.deletingLastPathComponent().appending(path: destination.lastPathComponent + ".partial", directoryHint: .isDirectory)
         try? fm.removeItem(at: staging)
@@ -77,7 +78,7 @@ public enum ProfileBuilder {
         do {
             // 1. data.win and the music from AM2R 1.1
             step?(.extract)
-            let original = try extract(source: source, kind: kind, root: root, into: work)
+            let original = try await extract(source: source, kind: kind, root: root, into: work)
 
             // 2. data.win + the game patch = game.ios (the engine reads any system's game data)
             step?(.patch)
@@ -119,36 +120,28 @@ public enum ProfileBuilder {
         return Result(folder: destination, info: info)
     }
 
-    /// Puts data.win and every .ogg of AM2R 1.1 into `work` and returns that folder.
-    private static func extract(source: URL, kind: AM2R11.Kind, root: String, into work: URL) throws -> URL {
-        let fm = FileManager.default
-        try fm.createDirectory(at: work, withIntermediateDirectories: true)
+    /// The folder that holds AM2R 1.1's data.win and music: the folder itself, or the archive unpacked into `work`.
+    private static func extract(source: URL, kind: AM2R11.Kind, root: String, into work: URL) async throws -> URL {
+        let base: URL
         switch kind {
-        case .zip:
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
-            process.arguments = ["-o", "-q", "-j", source.path, root + "data.win", root + "*.ogg", "-d", work.path]
-            process.standardOutput = FileHandle.nullDevice
-            process.standardError = FileHandle.nullDevice
-            try process.run()
-            process.waitUntilExit()
-            guard process.terminationStatus == 0 else { throw Failure.extractFailed }
-            return work
-        case .sevenZip:
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/tar")
-            process.arguments = Zip.sevenZipExtract(source, root: root, members: ["data.win", "*.ogg"], into: work)
-            process.standardOutput = FileHandle.nullDevice
-            process.standardError = FileHandle.nullDevice
-            try process.run()
-            process.waitUntilExit()
-            guard process.terminationStatus == 0 else { throw Failure.extractFailed }
-            return work
+        case .zip, .sevenZip:
+            // The whole archive at once: a .7z is solid, so taking its files one by one would unpack it again for each.
+            let unpacked = work.appending(path: "AM2R 1.1", directoryHint: .isDirectory)
+            do {
+                if kind == .zip {
+                    try await Zip.unpack(source, into: unpacked, dropsQuarantine: true)
+                } else {
+                    try await AnyArchive.unpack(source, into: unpacked)
+                }
+            } catch {
+                throw Failure.extractFailed
+            }
+            base = root.isEmpty ? unpacked : unpacked.appending(path: root, directoryHint: .isDirectory)
         case .folder:
-            let base = root.isEmpty ? source : source.appending(path: root, directoryHint: .isDirectory)
-            guard fm.fileExists(atPath: base.appending(path: "data.win").path) else { throw Failure.extractFailed }
-            return base
+            base = root.isEmpty ? source : source.appending(path: root, directoryHint: .isDirectory)
         }
+        guard FileManager.default.fileExists(atPath: base.appending(path: "data.win").path) else { throw Failure.extractFailed }
+        return base
     }
 
     private static func copyMusic(from original: URL, to staging: URL) throws {

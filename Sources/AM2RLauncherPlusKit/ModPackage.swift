@@ -1,3 +1,4 @@
+import ArchiveKit
 import Foundation
 
 /// The attributes of an AM2RLauncher profile.xml, read by name with a real XML parser
@@ -97,15 +98,20 @@ public struct ModPackage: Equatable, Sendable {
     public var version: String { profile.version ?? "" }
     public var author: String { profile.author }
 
+    /// The most profile.xml may weigh: its notes are text.
+    static let profileLimit = 16 << 20
+
     /// Reads the zip's table of contents and its profile.xml, without extracting anything else.
-    public static func read(_ zip: URL) throws(Failure) -> ModPackage {
-        guard let listing = run(["-Z1", zip.path]).flatMap({ String(data: $0, encoding: .utf8) }) else { throw .unreadable }
-        let entries = listing.split(separator: "\n").map(String.init)
+    public static func read(_ zip: URL) async throws(Failure) -> ModPackage {
+        let all: [Zip.Entry]
+        do { all = try Zip.entries(zip) } catch { throw .unreadable }
+        // Refuses paths that would land outside the extraction folder, and links pointing out of it.
+        if Zip.unsafeEntry(all) != nil { throw .unreadable }
+        let entries = all.map(\.name)
             .filter { !$0.hasPrefix("__MACOSX/") && !$0.contains("/._") && !$0.hasPrefix("._") }
-        try check(entries: entries)
         guard let path = profilePath(in: entries) else { throw .notAMod }
         let root = String(path.dropLast("profile.xml".count))
-        guard let data = run(["-p", zip.path, path]),
+        guard let data = try? await Zip.read(path, from: zip, limit: profileLimit),
               let text = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1),
               let profile = ProfileXML(text.trimmingCharacters(in: CharacterSet(charactersIn: "\u{FEFF}")))
         else { throw .notAMod }
@@ -132,22 +138,16 @@ public struct ModPackage: Equatable, Sendable {
         return nil
     }
 
-    /// Refuses paths that would land outside the extraction folder.
-    private static func check(entries: [String]) throws(Failure) {
-        if entries.contains(where: { $0.hasPrefix("/") || $0.split(separator: "/").contains("..") }) { throw .unreadable }
-    }
-
     /// Extracts the mod's folder (everything under `root`) into `folder`, which then holds profile.xml.
-    public func extract(into folder: URL) throws(Failure) {
+    public func extract(into folder: URL) async throws(Failure) {
         let fm = FileManager.default
         let work = folder.appending(path: ".unzip", directoryHint: .isDirectory)
         try? fm.removeItem(at: work)
-        do { try fm.createDirectory(at: work, withIntermediateDirectories: true) } catch { throw .unreadable }
         defer { try? fm.removeItem(at: work) }
-        guard run(["-o", "-q", zip.path, "-x", "__MACOSX/*", "-d", work.path], tool: "unzip") != nil else { throw .unreadable }
+        do { try await Zip.unpack(zip, into: work, dropsQuarantine: true) } catch { throw .unreadable }
         let base = root.isEmpty ? work : work.appending(path: root, directoryHint: .isDirectory)
         do {
-            for item in try fm.contentsOfDirectory(at: base, includingPropertiesForKeys: nil) {
+            for item in try fm.contentsOfDirectory(at: base, includingPropertiesForKeys: nil) where item.lastPathComponent != "__MACOSX" {
                 let target = folder.appending(path: item.lastPathComponent)
                 try? fm.removeItem(at: target)
                 try fm.moveItem(at: item, to: target)
@@ -156,20 +156,4 @@ public struct ModPackage: Equatable, Sendable {
             throw .unreadable
         }
     }
-
-    /// unzip (or zipinfo with -Z) and its standard output, or nil when it fails.
-    private static func run(_ arguments: [String], tool: String = "unzip") -> Data? {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/\(tool)")
-        process.arguments = arguments
-        let output = Pipe()
-        process.standardOutput = output
-        process.standardError = FileHandle.nullDevice
-        do { try process.run() } catch { return nil }
-        let data = output.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        return process.terminationStatus == 0 ? data : nil
-    }
-
-    private func run(_ arguments: [String], tool: String) -> Data? { Self.run(arguments, tool: tool) }
 }

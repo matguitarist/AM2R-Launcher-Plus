@@ -35,56 +35,56 @@ private struct Fixture {
     }
 }
 
-@Test func reads7zLikeAZip() throws {
+@Test func reads7zLikeAZip() async throws {
     let fixture = Fixture()
-    #expect(throws: AM2R11.Problem.wrongDataWin) { try AM2R11.check(fixture.sevenZip("game", files: ["AM2R_11/data.win": "not the real game", "AM2R_11/AM2R.exe": "x"])) }
-    #expect(throws: AM2R11.Problem.missingDataWin) { try AM2R11.check(fixture.sevenZip("nogame", files: ["readme.txt": "hi"])) }
+    await #expect(throws: AM2R11.Problem.wrongDataWin) { try await AM2R11.check(fixture.sevenZip("game", files: ["AM2R_11/data.win": "not the real game", "AM2R_11/AM2R.exe": "x"])) }
+    await #expect(throws: AM2R11.Problem.missingDataWin) { try await AM2R11.check(fixture.sevenZip("nogame", files: ["readme.txt": "hi"])) }
     let broken = fixture.folder("d", files: ["broken.7z": "7z not really"]).appending(path: "broken.7z")
-    #expect(throws: AM2R11.Problem.unreadableZip) { try AM2R11.check(broken) }
+    await #expect(throws: AM2R11.Problem.unreadableZip) { try await AM2R11.check(broken) }
 }
 
-@Test func a7zMemberIsHashedInPlace() {
+@Test func a7zMemberIsHashedInPlace() async {
     let fixture = Fixture()
     let archive = fixture.sevenZip("g", files: ["AM2R [1.1]/data.win": "abc"])
-    #expect(Zip.list(archive)?.contains("AM2R [1.1]/data.win") == true)
+    #expect(await AM2R11.names(in: archive)?.contains("AM2R [1.1]/data.win") == true)
     // MD5 of "abc".
-    #expect(Zip.md5(of: "AM2R [1.1]/data.win", in: archive) == "900150983cd24fb0d6963f7d28e17f72")
+    #expect(await AM2R11.memberMD5(of: "AM2R [1.1]/data.win", in: archive) == "900150983cd24fb0d6963f7d28e17f72")
 }
 
-@Test func rejectsAFileThatIsNotAZip() throws {
+@Test func rejectsAFileThatIsNotAZip() async throws {
     let fixture = Fixture()
     let file = fixture.folder("x", files: ["notes.txt": "hi"]).appending(path: "notes.txt")
-    #expect(throws: AM2R11.Problem.notZipOrFolder) { try AM2R11.check(file) }
+    await #expect(throws: AM2R11.Problem.notZipOrFolder) { try await AM2R11.check(file) }
 }
 
-@Test func rejectsAFolderWithoutDataWin() {
+@Test func rejectsAFolderWithoutDataWin() async {
     let fixture = Fixture()
     let folder = fixture.folder("empty", files: ["readme.txt": "hi"])
-    #expect(throws: AM2R11.Problem.missingDataWin) { try AM2R11.check(folder) }
+    await #expect(throws: AM2R11.Problem.missingDataWin) { try await AM2R11.check(folder) }
 }
 
-@Test func rejectsAModifiedDataWinInAFolder() {
+@Test func rejectsAModifiedDataWinInAFolder() async {
     let fixture = Fixture()
     let folder = fixture.folder("game", files: ["data.win": "not the real game"])
-    #expect(throws: AM2R11.Problem.wrongDataWin) { try AM2R11.check(folder) }
+    await #expect(throws: AM2R11.Problem.wrongDataWin) { try await AM2R11.check(folder) }
 }
 
-@Test func rejectsAModifiedDataWinInAZip() {
+@Test func rejectsAModifiedDataWinInAZip() async {
     let fixture = Fixture()
     let zip = fixture.zip("game", files: ["data.win": "not the real game", "AM2R.exe": "x"])
-    #expect(throws: AM2R11.Problem.wrongDataWin) { try AM2R11.check(zip) }
+    await #expect(throws: AM2R11.Problem.wrongDataWin) { try await AM2R11.check(zip) }
 }
 
-@Test func rejectsAZipWithoutDataWin() {
+@Test func rejectsAZipWithoutDataWin() async {
     let fixture = Fixture()
     let zip = fixture.zip("nogame", files: ["readme.txt": "hi"])
-    #expect(throws: AM2R11.Problem.missingDataWin) { try AM2R11.check(zip) }
+    await #expect(throws: AM2R11.Problem.missingDataWin) { try await AM2R11.check(zip) }
 }
 
-@Test func rejectsADamagedZip() {
+@Test func rejectsADamagedZip() async {
     let fixture = Fixture()
     let zip = fixture.folder("d", files: ["broken.zip": "PK not really"]).appending(path: "broken.zip")
-    #expect(throws: AM2R11.Problem.unreadableZip) { try AM2R11.check(zip) }
+    await #expect(throws: AM2R11.Problem.unreadableZip) { try await AM2R11.check(zip) }
 }
 
 @Test("Finds data.win at the top or in one subfolder", arguments: [
@@ -118,8 +118,8 @@ func zipRoot(entries: [String], expected: String?) {
 
 /// Runs against the real game when AM2R11_PATH points at a 1.1 zip or folder (not in CI).
 @Test(.enabled(if: ProcessInfo.processInfo.environment["AM2R11_PATH"] != nil))
-func acceptsTheRealAM2R11() throws {
+func acceptsTheRealAM2R11() async throws {
     let url = URL(fileURLWithPath: ProcessInfo.processInfo.environment["AM2R11_PATH"]!)
-    let copy = try AM2R11.check(url)
+    let copy = try await AM2R11.check(url)
     #expect(copy.hasWindowsGame)
 }
